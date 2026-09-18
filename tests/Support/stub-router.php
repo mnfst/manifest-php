@@ -13,7 +13,7 @@ $current = $read();
 header('Content-Type: application/json');
 
 if ($path === '/__ready') {
-    echo json_encode(['ready' => true]);
+    echo json_encode(['ready' => true, 'token' => getenv('MNFST_STUB_TOKEN')]);
 
     return true;
 }

@@ -4,7 +4,7 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 header('Content-Type: application/json');
 
 if ($path === '/__ready') {
-    echo json_encode(['ready' => true]);
+    echo json_encode(['ready' => true, 'token' => getenv('MNFST_STUB_TOKEN')]);
 
     return true;
 }

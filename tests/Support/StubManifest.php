@@ -20,15 +20,16 @@ class StubManifest
 
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $port = random_int(9200, 9899);
+            $token = bin2hex(random_bytes(8));
             $this->process = proc_open(
                 sprintf('exec php -S 127.0.0.1:%d %s', $port, escapeshellarg($this->routerPath())),
                 [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
                 $pipes,
                 null,
-                ['MNFST_STUB_STATE' => $this->stateFile],
+                ['MNFST_STUB_STATE' => $this->stateFile, 'MNFST_STUB_TOKEN' => $token],
             );
             $url = "http://127.0.0.1:$port";
-            if ($this->waitUntilReady($url)) {
+            if ($this->waitUntilReady($url, $token)) {
                 return $this->url = $url;
             }
             $this->terminate();
@@ -94,19 +95,23 @@ class StubManifest
     }
 
     /**
-     * Deliberately NOT curl: a curl_exec here would happen before the SDK's
-     * hooks are installed, and an internal function that has already been
-     * called cannot be hooked afterwards (hook rule 7).
+     * Ready means OUR server answers on the port: another test's stub may
+     * still be dying on it, and the wrong one would answer 404 to every
+     * route. Deliberately NOT curl: a curl_exec here would happen before the
+     * SDK's hooks are installed, and an internal function that has already
+     * been called cannot be hooked afterwards (hook rule 7).
      */
-    private function waitUntilReady(string $url): bool
+    private function waitUntilReady(string $url, string $token): bool
     {
-        $port = (int) parse_url($url, PHP_URL_PORT);
+        $context = stream_context_create(['http' => ['timeout' => 0.5, 'ignore_errors' => true]]);
         for ($i = 0; $i < 100; $i++) {
             usleep(20000);
-            $socket = @stream_socket_client("tcp://127.0.0.1:$port", $errno, $errstr, 0.2);
-            if (is_resource($socket)) {
-                fclose($socket);
-
+            $status = proc_get_status($this->process);
+            if (!$status['running']) {
+                return false;   // could not bind: the port is taken
+            }
+            $body = @file_get_contents($url . '/__ready', false, $context);
+            if (is_string($body) && str_contains($body, $token)) {
                 return true;
             }
         }
