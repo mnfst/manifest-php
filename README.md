@@ -112,4 +112,4 @@ Check your [Manifest dashboard](https://dashboard.manifest.build) to see all rep
 
 ## More
 
-[Configuration, limits & development](docs/guide.md) · [API contract](CONTRACT.md) · [Node.js SDK](https://github.com/mnfst/manifest-node) · [Python SDK](https://github.com/mnfst/manifest-python) · [Website](https://manifest.build)
+[Configuration, limits & development](docs/guide.md) · [API contract](CONTRACT.md) · [Node.js SDK](https://www.npmjs.com/package/manifest) · [Python SDK](https://pypi.org/project/mnfst/) · [Website](https://manifest.build)
