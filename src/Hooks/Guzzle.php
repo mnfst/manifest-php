@@ -15,6 +15,7 @@ use Mnfst\Healer;
 use Mnfst\Retry;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamInterface;
 
 use function OpenTelemetry\Instrumentation\hook;
 
@@ -51,7 +52,7 @@ final class Guzzle
         if (!class_exists(Client::class) || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$healer = new Healer($config, $api);
+        self::$healer = new Healer($config, $api, static fn (string $raw): StreamInterface => Utils::streamFor($raw));
         if (self::$installed) {
             return false;
         }
@@ -77,21 +78,22 @@ final class Guzzle
                     static fn (ResponseInterface $response): ResponseInterface
                         => self::$healer?->attempt($request, $response, $started, $send) ?? $response,
                     static function (mixed $reason) use ($request, $started, $send): mixed {
-                        if (!$reason instanceof BadResponseException) {
+                        if (!$reason instanceof BadResponseException || self::$healer === null) {
                             return Create::rejectionFor($reason);
                         }
-                        $replayed = self::$healer?->attempt($request, $reason->getResponse(), $started, $send);
-                        if ($replayed === null) {
+                        $original = $reason->getResponse();
+                        $outcome = self::$healer->attempt($request, $original, $started, $send);
+                        if ($outcome === $original) {
                             return Create::rejectionFor($reason);
                         }
-                        // The caller runs with http_errors on: a retry that failed
-                        // again must throw like the original did, not resolve as a
-                        // response the caller would take for a success.
-                        if ($replayed->getStatusCode() >= 400) {
-                            return Create::rejectionFor(RequestException::create($request, $replayed));
+                        // The caller runs with http_errors on: a failure, retried or
+                        // rebuilt, must throw like the original did, not resolve as
+                        // a response the caller would take for a success.
+                        if ($outcome->getStatusCode() >= 400) {
+                            return Create::rejectionFor(RequestException::create($request, $outcome));
                         }
 
-                        return $replayed;
+                        return $outcome;
                     },
                 );
             },

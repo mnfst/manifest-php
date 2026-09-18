@@ -5,6 +5,7 @@ namespace Mnfst\Hooks;
 use Cake\Http\Client;
 use Cake\Http\Client\Request as CakeRequest;
 use Cake\Http\Client\Response as CakeResponse;
+use Laminas\Diactoros\Stream;
 use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\Healer;
@@ -40,7 +41,13 @@ final class Cake
         if (!class_exists(Client::class) || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$healer = new Healer($config, $api);
+        self::$healer = new Healer($config, $api, static function (string $raw): Stream {
+            $stream = new Stream('php://memory', 'wb+');
+            $stream->write($raw);
+            $stream->rewind();
+
+            return $stream;
+        });
         if (self::$installed) {
             return false;
         }
@@ -64,14 +71,14 @@ final class Cake
                 $options = is_array($params[1] ?? null) ? $params[1] : [];
                 $sender = $client instanceof Client ? $client : new Client();
 
-                $replayed = self::$healer->attempt(
+                $outcome = self::$healer->attempt(
                     $request,
                     $response,
                     $started,
                     static fn (Retry $retry): CakeResponse => $sender->send(self::request($request, $retry), $options),
                 );
 
-                return $replayed instanceof CakeResponse ? $replayed : $response;
+                return $outcome instanceof CakeResponse ? $outcome : $response;
             },
         );
 

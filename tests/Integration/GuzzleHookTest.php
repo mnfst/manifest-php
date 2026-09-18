@@ -88,7 +88,7 @@ final class GuzzleHookTest extends TestCase
             self::fail('a 400 must throw for a client with http_errors on, retry or not');
         } catch (ClientException $e) {
             self::assertSame(400, $e->getResponse()->getStatusCode());
-            self::assertStringContainsString('too big', (string) $e->getResponse()->getBody());
+            self::assertStringContainsString('too big', $e->getResponse()->getBody()->getContents());
         }
         self::assertSame(400, $this->manifest->outcomes()[0][1]['response']['statusCode']);
     }
@@ -115,6 +115,29 @@ final class GuzzleHookTest extends TestCase
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(400, $response->getStatusCode());
+        self::assertStringContainsString('too big', $response->getBody()->getContents(), 'the SDK read the body; the caller must still be able to');
+    }
+
+    public function testAStreamedErrorBodyStaysReadable(): void
+    {
+        $this->manifest->setResult(['status' => 'no_patch']);
+        $response = (new Client(['http_errors' => false, 'stream' => true]))
+            ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertStringContainsString('too big', $response->getBody()->getContents());
+        self::assertCount(1, $this->manifest->heals());
+    }
+
+    public function testAStreamedFailureStillThrowsWithTheBodyWhenHttpErrorsIsOn(): void
+    {
+        $this->manifest->setResult(['status' => 'no_patch']);
+        try {
+            (new Client(['stream' => true]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+            self::fail('a 400 must throw');
+        } catch (ClientException $e) {
+            self::assertStringContainsString('too big', $e->getResponse()->getBody()->getContents());
+        }
     }
 
     public function testTheOutcomeIsReported(): void

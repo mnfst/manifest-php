@@ -85,6 +85,16 @@ final class CakeHookTest extends TestCase
         self::assertSame([], $this->manifest->heals());
     }
 
+    public function testTheCallerCanStillReadTheBodyAfterACapture(): void
+    {
+        $this->manifest->setResult(['status' => 'no_patch']);
+        $response = (new Client())->post($this->upstream->url . '/orders', json_encode(['limit' => 500]), ['type' => 'json']);
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertStringContainsString('too big', $response->getBody()->getContents());
+        self::assertStringContainsString('too big', $response->getStringBody());
+    }
+
     public function testAGetWithNoBodyIsUnaffected(): void
     {
         self::assertSame(200, (new Client())->get($this->upstream->url . '/ping')->getStatusCode());
