@@ -3,6 +3,7 @@
 namespace Mnfst\Tests\Integration;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
 use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\HealEvent;
@@ -76,6 +77,20 @@ final class GuzzleHookTest extends TestCase
         $this->healTo(['limit' => 100]);
         $response = (new Client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
         self::assertSame(200, $response->getStatusCode());
+    }
+
+    public function testAFailedRetryStillThrowsWhenHttpErrorsIsOn(): void
+    {
+        $this->healTo(['limit' => 400]);   // the heal changes nothing that matters: the retry fails again
+
+        try {
+            (new Client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+            self::fail('a 400 must throw for a client with http_errors on, retry or not');
+        } catch (ClientException $e) {
+            self::assertSame(400, $e->getResponse()->getStatusCode());
+            self::assertStringContainsString('too big', (string) $e->getResponse()->getBody());
+        }
+        self::assertSame(400, $this->manifest->outcomes()[0][1]['response']['statusCode']);
     }
 
     public function testASuccessfulResponsePassesThroughUntouched(): void

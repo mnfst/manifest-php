@@ -4,6 +4,7 @@ namespace Mnfst\Hooks;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Uri;
@@ -79,9 +80,18 @@ final class Guzzle
                         if (!$reason instanceof BadResponseException) {
                             return Create::rejectionFor($reason);
                         }
+                        $replayed = self::$healer?->attempt($request, $reason->getResponse(), $started, $send);
+                        if ($replayed === null) {
+                            return Create::rejectionFor($reason);
+                        }
+                        // The caller runs with http_errors on: a retry that failed
+                        // again must throw like the original did, not resolve as a
+                        // response the caller would take for a success.
+                        if ($replayed->getStatusCode() >= 400) {
+                            return Create::rejectionFor(RequestException::create($request, $replayed));
+                        }
 
-                        return self::$healer?->attempt($request, $reason->getResponse(), $started, $send)
-                            ?? Create::rejectionFor($reason);
+                        return $replayed;
                     },
                 );
             },
