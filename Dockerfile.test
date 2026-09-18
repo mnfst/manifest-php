@@ -1,0 +1,8 @@
+ARG PHP=8.4
+FROM php:${PHP}-cli
+RUN pecl install opentelemetry && docker-php-ext-enable opentelemetry
+RUN apt-get update -qq && apt-get install -y -qq git unzip libzip-dev >/dev/null \
+ && docker-php-ext-install -j4 zip >/dev/null 2>&1
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+WORKDIR /app
+RUN git config --global --add safe.directory /app
