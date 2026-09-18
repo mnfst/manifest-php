@@ -138,25 +138,35 @@ final class Retry
      * Every `name=REDACTED` in the healed query takes the value the original
      * request sent for that name. A REDACTED with nothing to restore aborts
      * the retry: the SDK never sends that literal upstream.
+     *
+     * A credential-named param the original carried and the healed URL left
+     * out is put back: the server only ever saw its name, so it cannot have
+     * decided to drop it, and a retry without the key is a certain 401.
+     * The fragment never goes on the wire and is dropped.
      */
     private static function restoreQuery(string $url, string $healedQuery, string $originalQuery): ?string
     {
-        if (!str_contains($healedQuery, self::MASK)) {
-            return $url;
-        }
         $originals = [];
         foreach (Wire::queryPairs($originalQuery) as [$name, $value]) {
-            $originals[urldecode($name)] ??= $value;
+            $originals[urldecode($name)] ??= [$name, $value];
         }
         $restored = [];
+        $seen = [];
         foreach (Wire::queryPairs($healedQuery) as [$name, $value]) {
+            $decoded = urldecode($name);
+            $seen[$decoded] = true;
             if ($value === self::MASK) {
-                $value = $originals[urldecode($name)] ?? null;
+                $value = $originals[$decoded][1] ?? null;
                 if ($value === null) {
                     return null;
                 }
             }
             $restored[] = $value === null ? $name : $name . '=' . $value;
+        }
+        foreach ($originals as $decoded => [$name, $value]) {
+            if (!isset($seen[$decoded]) && $value !== null && Wire::isSecretField($decoded)) {
+                $restored[] = $name . '=' . $value;
+            }
         }
         $base = explode('#', explode('?', $url, 2)[0], 2)[0];
 

@@ -78,6 +78,30 @@ final class RetryTest extends TestCase
         self::assertSame('https://api.test/v1/search?api_key=sk_1&page=1&guest_session_id=gs%2F9', $retry?->url);
     }
 
+    public function testACredentialParamTheHealedUrlDroppedIsPutBack(): void
+    {
+        // The server builds healedRequest.url from what it saw: a masked key it may well leave out.
+        $retry = $this->build(
+            ['url' => 'https://api.test/v1/search?query=Batman'],
+            url: 'https://api.test/v1/search?query=Batman&page=1&page=2&api_key=sk_1',
+        );
+        self::assertSame('https://api.test/v1/search?query=Batman&api_key=sk_1', $retry?->url);
+
+        $retry = $this->build(
+            ['url' => 'https://api.test/v1/search?query=Batman&page=1'],
+            url: 'https://api.test/v1/search?query=Batman&page=1&page=2',
+        );
+        self::assertSame('https://api.test/v1/search?query=Batman&page=1', $retry?->url, 'a dropped non-credential stays dropped');
+    }
+
+    public function testTheFragmentNeverReachesTheRetry(): void
+    {
+        $retry = $this->build(['url' => 'https://api.test/v1/search?query=Batman#section']);
+        self::assertSame('https://api.test/v1/search?query=Batman', $retry?->url);
+        $retry = $this->build(['url' => 'https://api.test/v1/search#?token=REDACTED']);
+        self::assertSame('https://api.test/v1/search', $retry?->url);
+    }
+
     public function testAMaskThatCannotBeRestoredAbortsTheRetry(): void
     {
         self::assertNull($this->build(['url' => 'https://api.test/v1/search?token=REDACTED']));

@@ -146,6 +146,15 @@ final class CakeHookTest extends TestCase
         self::assertStringContainsString('api_key=REDACTED&page=1&page=2', $this->manifest->heals()[0]['request']['url']);
     }
 
+    public function testAQueryCredentialTheHealedUrlLeftOutIsSentOnTheRetry(): void
+    {
+        $this->healTo(['url' => $this->upstream->url . '/search?query=Batman']);
+
+        $echo = $this->search('query=Batman&page=1&page=2&api_key=sk_live_1');
+
+        self::assertSame('query=Batman&api_key=sk_live_1', $echo['query']);
+    }
+
     public function testAHealedUrlOnAnotherOriginIsNotReplayed(): void
     {
         $this->healTo(['url' => 'https://evil.test/search?query=Batman']);
