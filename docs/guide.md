@@ -14,6 +14,16 @@ environment.
 Everything that is policy — whether a given app, endpoint or direction gets
 healed — lives server-side, where it is editable without a deploy.
 
+`$onHeal` is called after every captured failure with a `Mnfst\HealEvent`:
+`url` (credentials masked), `statusCode` (the failure), `healStatus`
+(`patched`, `unverified`, `no_patch`, `heal_unreachable` or `replay_failed`),
+`replayStatusCode` (null when nothing was retried), `healMs` and `operations`.
+A callback that throws degrades to a PHP warning.
+
+```php
+manifest(onHeal: fn (HealEvent $e) => error_log("[manifest] $e->healStatus → $e->replayStatusCode"));
+```
+
 ## Loading order
 
 A PHP hook cannot attach to a function that has already been called in the

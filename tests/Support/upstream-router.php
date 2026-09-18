@@ -22,6 +22,41 @@ if ($path === '/ping') {
     return true;
 }
 
+// Rejects a duplicated `page` query param the way TMDB does, else echoes the
+// request so a test can see exactly what was replayed: method, raw query,
+// headers and body.
+if ($path === '/search') {
+    $query = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
+    if (substr_count($query, 'page=') > 1) {
+        http_response_code(400);
+        echo json_encode(['error' => 'duplicate page parameter']);
+
+        return true;
+    }
+    $headers = [];
+    foreach ($_SERVER as $name => $value) {
+        if (str_starts_with($name, 'HTTP_')) {
+            $headers[strtolower(str_replace('_', '-', substr($name, 5)))] = $value;
+        }
+    }
+    echo json_encode([
+        'method' => $_SERVER['REQUEST_METHOD'],
+        'query' => $query,
+        'headers' => $headers,
+        'body' => file_get_contents('php://input'),
+    ]);
+
+    return true;
+}
+
+if ($path === '/slow') {
+    usleep(30000);
+    http_response_code(400);
+    echo json_encode(['error' => 'slow and wrong']);
+
+    return true;
+}
+
 $raw = file_get_contents('php://input');
 $in = json_decode($raw, true);
 if (!is_array($in)) {

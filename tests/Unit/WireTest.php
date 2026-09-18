@@ -15,6 +15,33 @@ final class WireTest extends TestCase
         self::assertStringNotContainsString('sk_live_123', $out);
     }
 
+    public function testKeepsTheQueryAsItWentOnTheWire(): void
+    {
+        $url = 'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=sk_1';
+        self::assertSame(
+            'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=REDACTED',
+            Wire::safeUrl($url),
+        );
+    }
+
+    public function testMasksNamesThatEndWithACredentialWord(): void
+    {
+        foreach (['guest_session_id', 'stripe_api_key', 'userPassword', 'X-Client-Secret'] as $name) {
+            self::assertTrue(Wire::isSecretField($name), "$name must be secret");
+        }
+        foreach (['page_token', 'session_count', 'keyword', 'limit'] as $name) {
+            self::assertFalse(Wire::isSecretField($name), "$name must travel");
+        }
+    }
+
+    public function testSplitsAQueryIntoRawPairs(): void
+    {
+        self::assertSame(
+            [['a', '1'], ['a', '2'], ['b', ''], ['c', null], ['d', 'x=y']],
+            Wire::queryPairs('a=1&a=2&b=&c&&d=x=y'),
+        );
+    }
+
     public function testStripsUserInfoFromTheUrl(): void
     {
         self::assertSame('https://api.test/x', Wire::safeUrl('https://user:pw@api.test/x'));
