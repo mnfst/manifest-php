@@ -18,6 +18,8 @@ if ($path === '/__ready') {
     return true;
 }
 
+$append('requests', ['method' => $_SERVER['REQUEST_METHOD'], 'path' => $path]);
+
 if ($current['rejectKey'] ?? false) {
     http_response_code(401);
     echo json_encode(['message' => 'missing project key', 'error' => 'Unauthorized', 'statusCode' => 401]);

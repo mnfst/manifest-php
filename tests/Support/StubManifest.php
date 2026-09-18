@@ -79,10 +79,16 @@ class StubManifest
         return $this->readLog('outcomes');
     }
 
+    /** @return array<int, array{method: string, path: string}> every call, answered or refused, oldest first */
+    public function requests(): array
+    {
+        return $this->readLog('requests');
+    }
+
     public function stop(): void
     {
         $this->terminate();
-        foreach (['state', 'heals', 'hellos', 'outcomes'] as $suffix) {
+        foreach (['state', 'heals', 'hellos', 'outcomes', 'requests'] as $suffix) {
             @unlink($this->stateFile . '.' . $suffix);
         }
     }

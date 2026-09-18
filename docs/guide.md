@@ -64,8 +64,10 @@ other stream-based HTTP are not covered.
   response. A hook that throws degrades to a PHP warning.
 - **Request bodies over 256 KB are not parsed**, and response bodies travel
   capped at 64 KB.
-- A `403` carrying `{"error":"project_disabled"}` suppresses healing for five
-  minutes.
+- A `403` carrying `{"error":"project_disabled"}` or a `401` (rejected key)
+  suppresses healing for five minutes; a server that times out, fails or
+  cannot be reached is left alone for a minute. The deadline lives in a marker
+  file in the temp directory, so it holds across php-fpm workers and requests.
 
 ## Data sent to Manifest
 

@@ -14,14 +14,32 @@ final class HealApi
      */
     public const NOT_ATTEMPTED = 'replay_not_attempted';
 
+    /** A disabled project or a rejected key: nothing will change for a while. */
     private const DISABLED_BACKOFF_SECONDS = 300;
+
+    /** A server that timed out, failed or could not be reached: try again soon, not on the very next failure. */
+    private const UNREACHABLE_BACKOFF_SECONDS = 60;
+
     private const MAX_HEAL_RESPONSE = 1048576;
 
     private static bool $internalCall = false;
-    private float $disabledUntil = 0.0;
 
     public function __construct(private readonly Config $config)
     {
+    }
+
+    /**
+     * PHP keeps nothing between requests, so the backoff lives in a marker
+     * file whose mtime is the deadline (like the handshake marker). Without
+     * it every php-fpm worker would learn the project is disabled on its own
+     * failing request, and a hanging server would cost the heal timeout on
+     * every failure instead of once a minute.
+     */
+    public function backoffPath(): string
+    {
+        $fingerprint = substr(hash('sha256', $this->config->baseUrl . '|' . ($this->config->apiKey ?? '')), 0, 16);
+
+        return sys_get_temp_dir() . '/mnfst-backoff-' . $fingerprint;
     }
 
     /** True while the SDK is making its own call, so hooks can skip it. */
@@ -43,7 +61,14 @@ final class HealApi
 
     public function healingEnabled(): bool
     {
-        return microtime(true) >= $this->disabledUntil;
+        $deadline = @filemtime($this->backoffPath());
+
+        return $deadline === false || $deadline <= time();
+    }
+
+    private function backOff(int $seconds): void
+    {
+        @touch($this->backoffPath(), time() + $seconds);
     }
 
     public function heal(array $payload): ?array
@@ -54,13 +79,21 @@ final class HealApi
 
         $response = $this->send('POST', '/v1/heal', $payload, Config::HEAL_TIMEOUT_SECONDS);
         if ($response === null) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
+
             return null;
         }
 
         [$status, $raw] = $response;
 
-        if ($status === 403 && $this->isProjectDisabled($raw)) {
-            $this->disabledUntil = microtime(true) + self::DISABLED_BACKOFF_SECONDS;
+        if (($status === 403 && $this->isProjectDisabled($raw)) || $status === 401) {
+            $this->backOff(self::DISABLED_BACKOFF_SECONDS);
+
+            return null;
+        }
+
+        if ($status >= 500) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
 
             return null;
         }
