@@ -74,4 +74,24 @@ final class DoctorTest extends TestCase
         self::assertSame(1, $code);
         self::assertStringContainsString('unreachable', $output);
     }
+
+    public function testAnInvalidKeyIsReportedAsRejectedNotUnreachable(): void
+    {
+        $this->stub->setRejectKey(true);
+        [$code, $output] = $this->doctor('mnfx_wrong');
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('rejected', $output);
+        self::assertStringNotContainsString('unreachable', $output);
+    }
+
+    public function testADisabledProjectIsNotReportedAsARejectedKey(): void
+    {
+        $this->stub->setDisabled(true);
+        [$code, $output] = $this->doctor('mnfx_valid');
+
+        self::assertSame(1, $code);
+        self::assertStringContainsString('healing is disabled', $output);
+        self::assertStringNotContainsString('rejected', $output);
+    }
 }

@@ -18,6 +18,13 @@ if ($path === '/__ready') {
     return true;
 }
 
+if ($current['rejectKey'] ?? false) {
+    http_response_code(401);
+    echo json_encode(['message' => 'missing project key', 'error' => 'Unauthorized', 'statusCode' => 401]);
+
+    return true;
+}
+
 if ($current['disabled'] ?? false) {
     http_response_code(403);
     echo json_encode(['error' => 'project_disabled']);
