@@ -87,16 +87,20 @@ class StubManifest
         $this->process = null;
     }
 
+    /**
+     * Deliberately NOT curl: a curl_exec here would happen before the SDK's
+     * hooks are installed, and an internal function that has already been
+     * called cannot be hooked afterwards (hook rule 7).
+     */
     private function waitUntilReady(string $url): bool
     {
+        $port = (int) parse_url($url, PHP_URL_PORT);
         for ($i = 0; $i < 100; $i++) {
             usleep(20000);
-            $ch = curl_init($url . '/__ready');
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 1]);
-            $raw = curl_exec($ch);
-            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-            curl_close($ch);
-            if ($status === 200 && is_string($raw) && str_contains($raw, 'ready')) {
+            $socket = @stream_socket_client("tcp://127.0.0.1:$port", $errno, $errstr, 0.2);
+            if (is_resource($socket)) {
+                fclose($socket);
+
                 return true;
             }
         }
