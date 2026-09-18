@@ -6,7 +6,7 @@ namespace Mnfst\Tests\Support;
  * A real socket the SDK can talk to. Its behaviour is the contract, so a
  * change here means the contract changed.
  */
-final class StubManifest
+class StubManifest
 {
     /** @var resource|null */
     private $process = null;
