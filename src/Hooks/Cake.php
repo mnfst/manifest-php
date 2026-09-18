@@ -16,7 +16,6 @@ use Mnfst\Retry;
 use Mnfst\Streams;
 use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
 
 use function OpenTelemetry\Instrumentation\hook;
 

@@ -116,6 +116,7 @@ final class HealApi
         ?int $retryStatusCode,
         ?array $retryBody = null,
         ?string $error = null,
+        bool $truncated = false,
     ): void {
         if ($error !== null) {
             $body = ['failure' => [
@@ -126,7 +127,7 @@ final class HealApi
             $response = ['statusCode' => $retryStatusCode];
             if ($retryBody !== null) {
                 $response['body'] = $retryBody;
-                $response['truncated'] = false;
+                $response['truncated'] = $truncated;
             }
             $body = ['response' => $response];
         }

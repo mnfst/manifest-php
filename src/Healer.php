@@ -81,8 +81,8 @@ final class Healer
             }
 
             $replayStatus = $replay->status;
-            $failedBody = $replayStatus >= 400 ? Wire::cappedResponseBody($replay->body)[0] : null;
-            $this->report($attemptId, $replayStatus, is_array($failedBody) ? $failedBody : null);
+            [$failedBody, $failedTruncated] = $replayStatus >= 400 ? Wire::cappedResponseBody($replay->body) : [null, false];
+            $this->report($attemptId, $replayStatus, is_array($failedBody) ? $failedBody : null, null, $failedTruncated);
 
             return $replay;
         } catch (\Throwable) {
@@ -104,10 +104,10 @@ final class Healer
         $this->report($attemptId, null, null, HealApi::NOT_ATTEMPTED);
     }
 
-    private function report(mixed $attemptId, ?int $status, ?array $failedBody, ?string $error = null): void
+    private function report(mixed $attemptId, ?int $status, ?array $failedBody, ?string $error = null, bool $truncated = false): void
     {
         if (is_string($attemptId)) {
-            $this->api->reportOutcome($attemptId, $status, $failedBody, $error);
+            $this->api->reportOutcome($attemptId, $status, $failedBody, $error, $truncated);
         }
     }
 
@@ -129,7 +129,10 @@ final class Healer
                 is_array($operations) ? $operations : null,
             ));
         } catch (\Throwable) {
-            trigger_error('manifest: the onHeal callback threw', E_USER_WARNING);
+            // Fail open: the SDK must never break the app, so an onHeal that
+            // throws is swallowed. A warning here would escape attempt() in
+            // apps that turn warnings into exceptions (the Laravel case).
+            error_log('manifest: the onHeal callback threw');
         }
     }
 }
