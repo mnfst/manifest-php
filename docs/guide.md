@@ -11,6 +11,10 @@ environment.
 | `$url` | `MNFST_URL` | `https://api.manifest.build` |
 | `$onHeal` | — | none |
 
+Environment variables are read from `$_SERVER`, `$_ENV` and `getenv()`, in that
+order, so a key set in a Laravel or Symfony `.env` file is found without any
+code. Passing the key explicitly (from `config()`, say) always wins.
+
 Everything that is policy — whether a given app, endpoint or direction gets
 healed — lives server-side, where it is editable without a deploy.
 
