@@ -1,0 +1,27 @@
+src/Hooks/Guzzle.php
+  s_2fe8ca2013d17b::t_ecd5c38fdde956 1-169
+tests/Integration/GuzzleHookTest.php
+  s_2fe8ca2013d17b::t_bfd8528226c0e5 1-116
+tests/Support/StubManifest.php
+  s_2fe8ca2013d17b::t_147b55ab54a3e3 9
+tests/Support/StubUpstream.php
+  s_2fe8ca2013d17b::t_cfb02a582a256d 1-15
+tests/Support/upstream-router.php
+  s_2fe8ca2013d17b::t_427999e3b6f08b 1-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "57d94eb1f8cabc1b1638b6773ecf7f87b1e12c5b",
+  "prompts": {},
+  "sessions": {
+    "s_2fe8ca2013d17b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "407ad9da-64dd-4a23-887c-4d6439f79e95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
