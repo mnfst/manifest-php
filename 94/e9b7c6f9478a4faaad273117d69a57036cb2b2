@@ -1,0 +1,25 @@
+bin/manifest
+  s_2fe8ca2013d17b::t_d1ee1af27f6f2b 1-11
+prepend.php
+  s_2fe8ca2013d17b::t_631cb6ec34894b 1-28
+src/Doctor.php
+  s_2fe8ca2013d17b::t_f99342a68002f5 1-121
+tests/Integration/DoctorTest.php
+  s_2fe8ca2013d17b::t_18570e4ffb520e 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "94e9b7c6f9478a4faaad273117d69a57036cb2b2",
+  "prompts": {},
+  "sessions": {
+    "s_2fe8ca2013d17b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "407ad9da-64dd-4a23-887c-4d6439f79e95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
