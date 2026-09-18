@@ -1,0 +1,23 @@
+src/Hooks/Curl.php
+  s_2fe8ca2013d17b::t_7efe8b9cce940a 1-134
+tests/Integration/CurlHookTest.php
+  s_2fe8ca2013d17b::t_ef591bd172b2cf 1-119
+tests/Support/StubManifest.php
+  s_2fe8ca2013d17b::t_c39ed9d2704314 90-94,97,100-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "50e5bfb68690c4d896bbcac25f2b0eb605de4df7",
+  "prompts": {},
+  "sessions": {
+    "s_2fe8ca2013d17b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "407ad9da-64dd-4a23-887c-4d6439f79e95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
