@@ -55,12 +55,16 @@ final class Manifest
         return function_exists('OpenTelemetry\Instrumentation\hook');
     }
 
-    /** True when a PHPUnit or Pest run is in progress: their faked HTTP must not be captured. */
+    /**
+     * True when a PHPUnit or Pest run is in progress: their faked HTTP must not
+     * be captured. Both constants are defined by the runner's own bootstrap, so
+     * they are set during a test run and not merely because a framework
+     * autoloaded a PHPUnit class (Laravel's artisan loads PHPUnit\Runner\Version
+     * even under `serve`, which must stay instrumented).
+     */
     public static function inTestRunner(): bool
     {
-        return class_exists(\PHPUnit\Runner\Version::class, false)
-            || class_exists(\PHPUnit\Framework\TestCase::class, false)
-            || defined('PEST_VERSION');
+        return defined('PHPUNIT_COMPOSER_INSTALL') || defined('PEST_VERSION');
     }
 
     /** Opt back in to healing during tests with MNFST_IN_TESTS=1 (integration tests against a real server). */
