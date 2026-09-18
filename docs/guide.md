@@ -28,6 +28,13 @@ A callback that throws degrades to a PHP warning.
 manifest(onHeal: fn (HealEvent $e) => error_log("[manifest] $e->healStatus → $e->replayStatusCode"));
 ```
 
+## Calling manifest() more than once
+
+`manifest()` is idempotent. Hooks are process-global and installed once; a
+later call only refreshes the key, URL and callback they use, and never
+warns. A framework that boots the application several times per process (a
+test runner, Octane) or an `auto_prepend_file` next to a bootstrap call is fine.
+
 ## Loading order
 
 A PHP hook cannot attach to a function that has already been called in the
