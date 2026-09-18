@@ -31,8 +31,8 @@ final class Handshake
     public function announce(): void
     {
         try {
-            if ($this->isFresh()) {
-                return;
+            if ($this->config->apiKey === null || $this->isFresh()) {
+                return;   // no key: the install is not connected to any project, there is nothing to announce
             }
             @touch($this->markerPath());
             $this->send();
@@ -53,10 +53,11 @@ final class Handshake
 
     private function send(): void
     {
-        $headers = ['Content-Type: application/json', 'User-Agent: mnfst-php/' . Manifest::VERSION];
-        if ($this->config->apiKey !== null) {
-            $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
-        }
+        $headers = [
+            'Content-Type: application/json',
+            'User-Agent: mnfst-php/' . Manifest::VERSION,
+            'Authorization: Bearer ' . $this->config->apiKey,
+        ];
 
         HealApi::withInternalCall(function () use ($headers): void {
             $ch = curl_init($this->config->baseUrl . '/v1/hello');

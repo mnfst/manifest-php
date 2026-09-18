@@ -51,6 +51,16 @@ final class HealApiTest extends TestCase
         self::assertSame("caf\u{FFFD} non trouv\u{FFFD}", $received[0]['response']['body']);
     }
 
+    public function testNothingIsSentWithoutAKey(): void
+    {
+        $api = new HealApi(Config::resolve(null, $this->stub->url));
+
+        self::assertNull($api->heal($this->payload()));
+        $api->reportOutcome('a1', 200);
+
+        self::assertSame([], $this->stub->requests());
+    }
+
     public function testHealRoundTrip(): void
     {
         self::assertSame(['status' => 'no_patch', 'issueId' => 'stub-issue'], $this->api()->heal($this->payload()));

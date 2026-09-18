@@ -38,6 +38,16 @@ final class HandshakeTest extends TestCase
         self::assertCount(1, $this->stub->hellos());
     }
 
+    public function testNothingIsAnnouncedWithoutAKey(): void
+    {
+        $silent = new Handshake(Config::resolve(null, $this->stub->url));
+        @unlink($silent->markerPath());
+        $silent->announce();
+
+        self::assertSame([], $this->stub->hellos());
+        self::assertFileDoesNotExist($silent->markerPath());
+    }
+
     public function testSendsTheRuntime(): void
     {
         $this->handshake()->announce();

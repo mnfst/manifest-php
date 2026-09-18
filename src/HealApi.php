@@ -137,10 +137,14 @@ final class HealApi
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
     private function send(string $method, string $path, array $body, int $timeout): ?array
     {
-        $headers = ['Content-Type: application/json', 'User-Agent: mnfst-php/' . Manifest::VERSION];
-        if ($this->config->apiKey !== null) {
-            $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
+        if ($this->config->apiKey === null) {
+            return null;   // without a key nothing is sent: the server would only answer 401
         }
+        $headers = [
+            'Content-Type: application/json',
+            'User-Agent: mnfst-php/' . Manifest::VERSION,
+            'Authorization: Bearer ' . $this->config->apiKey,
+        ];
 
         // An upstream error body is whatever bytes the server sent: Latin-1
         // pages, binary, a cut multibyte character. Substituting the invalid
