@@ -72,7 +72,6 @@ final class Handshake
                 CURLOPT_CONNECTTIMEOUT => Config::HELLO_TIMEOUT_SECONDS,
             ]);
             curl_exec($ch);
-            curl_close($ch);
         });
     }
 }

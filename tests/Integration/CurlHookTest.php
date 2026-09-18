@@ -45,7 +45,6 @@ final class CurlHookTest extends TestCase
         ]);
         $raw = (string) curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
 
         return [$status, $raw];
     }

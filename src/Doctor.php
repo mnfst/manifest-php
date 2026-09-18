@@ -104,7 +104,6 @@ final class Doctor
         ]);
         $raw = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
 
         if (!is_string($raw) || $status !== 200) {
             return null;

@@ -121,7 +121,6 @@ final class HealApi
             ]);
             $raw = curl_exec($ch);
             $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-            curl_close($ch);
 
             return is_string($raw) && $status > 0 ? [$status, $raw] : null;
         });
