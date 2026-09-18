@@ -78,9 +78,14 @@ its own, so a failure Manifest cannot fix is reported once per attempt.
 ## Supported traffic
 
 Guzzle (every client in the process, whoever constructed it), Laravel's `Http`
-facade, and `Cake\Http\Client` are instrumented and healed. A library with its
-own raw `curl_*` client is captured but never healed. `file_get_contents` and
-other stream-based HTTP are not covered.
+facade, `Cake\Http\Client` and `Symfony\Component\HttpClient` (the curl and
+native transports, and any PSR-18 client that runs on one of these) are
+instrumented and healed. A library with its own raw `curl_*` client is captured
+but never healed. `file_get_contents` and other stream-based HTTP are not covered.
+
+Symfony's responses are lazy and its `stream()` reads several at once for
+concurrency; the SDK heals a response when the app first reads it, and leaves
+`stream()` alone, so responses read only through streaming are not healed.
 
 ## Limits and failure behaviour
 

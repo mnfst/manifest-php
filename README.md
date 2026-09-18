@@ -137,6 +137,7 @@ Check your [Manifest dashboard](https://dashboard.manifest.build) to see all rep
 | Laravel's `Http` facade | ✅ healed |
 | Guzzle, any client, including one built inside a third-party library | ✅ healed |
 | CakePHP's `Cake\Http\Client` | ✅ healed |
+| Symfony's `HttpClient` (curl & native transports) | ✅ healed |
 | A library with its own raw `curl_*` client, such as `stripe/stripe-php` | ⚠️ **captured, never healed** |
 | `file_get_contents` | ❌ not seen |
 
