@@ -23,6 +23,17 @@ final class Manifest
      */
     public static function start(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): void
     {
+        // A test suite fakes its HTTP: Http::fake(), Guzzle's MockHandler,
+        // Symfony's MockHttpClient. Those faked 4xx go through the real client
+        // and would be reported to Manifest as failures that never happened,
+        // filling the dashboard and, with a real key, hitting the live project.
+        // So manifest() installs nothing under a test runner unless MNFST_IN_TESTS
+        // opts in (the SDK's own suite does). auto_prepend_file installs, which
+        // cannot guard themselves in app code, are covered by this too.
+        if (self::inTestRunner() && !self::healsInTests()) {
+            return;
+        }
+
         $config = Config::resolve($apiKey, $url, $onHeal);
         $api = new HealApi($config);
 
@@ -42,5 +53,19 @@ final class Manifest
     public static function hasFullCoverage(): bool
     {
         return function_exists('OpenTelemetry\Instrumentation\hook');
+    }
+
+    /** True when a PHPUnit or Pest run is in progress: their faked HTTP must not be captured. */
+    public static function inTestRunner(): bool
+    {
+        return class_exists(\PHPUnit\Runner\Version::class, false)
+            || class_exists(\PHPUnit\Framework\TestCase::class, false)
+            || defined('PEST_VERSION');
+    }
+
+    /** Opt back in to healing during tests with MNFST_IN_TESTS=1 (integration tests against a real server). */
+    private static function healsInTests(): bool
+    {
+        return filter_var((string) Config::env('MNFST_IN_TESTS'), FILTER_VALIDATE_BOOLEAN);
     }
 }

@@ -50,7 +50,7 @@ final class Config
      * Symfony load .env files into $_ENV and $_SERVER without putenv(), so
      * getenv() alone sees nothing of a key set the way their docs say to.
      */
-    private static function env(string $name): ?string
+    public static function env(string $name): ?string
     {
         foreach ([$_SERVER[$name] ?? null, $_ENV[$name] ?? null, getenv($name)] as $value) {
             if (is_string($value) && $value !== '') {

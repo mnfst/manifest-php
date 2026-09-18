@@ -6,6 +6,10 @@
          failOnWarning="true"
          failOnNotice="true"
          failOnDeprecation="true">
+  <php>
+    <!-- The SDK's own tests drive the hooks through manifest(); opt back in. -->
+    <env name="MNFST_IN_TESTS" value="1"/>
+  </php>
   <testsuites>
     <testsuite name="unit"><directory>tests/Unit</directory></testsuite>
     <testsuite name="integration"><directory>tests/Integration</directory></testsuite>

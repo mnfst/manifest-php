@@ -77,24 +77,20 @@ manifest();  // before any HTTP call
 ```
 
 Laravel and CakePHP need no code of their own for coverage: their HTTP clients
-are instrumented. In Laravel, make the call from a service provider and keep it
-out of the test suite, where `Http::fake()` answers would be reported as real
-failures:
+are instrumented. In Laravel, make the call from a service provider:
 
 ```php
 // app/Providers/AppServiceProvider.php
 public function register(): void
 {
-    if ($this->app->runningUnitTests()) {
-        return;
-    }
     manifest(config('services.manifest.key'), config('services.manifest.url'));
 }
 ```
 
 with `'manifest' => ['key' => env('MNFST_KEY'), 'url' => env('MNFST_URL')]` in
-`config/services.php`. [The guide](docs/guide.md#laravel) explains why a
-`phpunit.xml` override alone does not keep it quiet under `php artisan test`.
+`config/services.php`. The SDK stays silent under PHPUnit and Pest, so
+`Http::fake()` answers are never reported as failures; `MNFST_IN_TESTS=1` opts
+back in. See [the guide](docs/guide.md#testing).
 
 ## Setup
 

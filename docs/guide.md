@@ -35,6 +35,14 @@ later call only refreshes the key, URL and callback they use, and never
 warns. A framework that boots the application several times per process (a
 test runner, Octane) or an `auto_prepend_file` next to a bootstrap call is fine.
 
+## Testing
+
+The SDK detects a PHPUnit or Pest run and installs no hooks, so a suite that
+fakes its HTTP (`Http::fake()`, Guzzle's `MockHandler`, Symfony's
+`MockHttpClient`) never reports those faked 4xx to Manifest. Nothing to
+configure. Set `MNFST_IN_TESTS=1` when you do want healing during tests, e.g.
+integration tests against a staging server.
+
 ## Loading order
 
 A PHP hook cannot attach to a function that has already been called in the
@@ -65,12 +73,13 @@ which the SDK also reads, but config is the Laravel way and survives
 `config:cache`). Every request through the `Http` facade is covered; a healed
 call fires one `ResponseReceived` event, with the healed response.
 
-Skip the call when `$this->app->runningUnitTests()`: `Http::fake()` answers go
-through the same Guzzle client and a faked 4xx is captured like a real one. A
-`phpunit.xml` `<env name="MNFST_KEY" value=""/>` is not enough under
-`php artisan test`: the artisan process hands its `$_SERVER`, `.env` values
-included, to PHPUnit as the real environment, and `<env>` never touches
-`$_SERVER`, which Laravel's `env()` reads first.
+The SDK installs nothing under a PHPUnit or Pest run, so `Http::fake()` answers
+are never reported as real failures; you do not need to guard the call
+yourself. Set `MNFST_IN_TESTS=1` to opt back in for integration tests that hit
+a real server. (A `phpunit.xml` `<env name="MNFST_KEY" value=""/>` would not
+have worked under `php artisan test` anyway: the artisan process hands its
+`$_SERVER`, `.env` values included, to PHPUnit as the real environment, and
+`<env>` never touches `$_SERVER`, which Laravel's `env()` reads first.)
 
 `Http::retry()` retries a failed call; each attempt that fails is a capture of
 its own, so a failure Manifest cannot fix is reported once per attempt.
