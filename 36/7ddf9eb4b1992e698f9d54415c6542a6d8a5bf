@@ -1,0 +1,21 @@
+src/Merge.php
+  s_2fe8ca2013d17b::t_c59902787d1056 1-39
+tests/Unit/MergeTest.php
+  s_2fe8ca2013d17b::t_abf6d4314e10f4 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "367ddf9eb4b1992e698f9d54415c6542a6d8a5bf",
+  "prompts": {},
+  "sessions": {
+    "s_2fe8ca2013d17b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "407ad9da-64dd-4a23-887c-4d6439f79e95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
