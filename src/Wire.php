@@ -182,13 +182,37 @@ final class Wire
     public static function cappedResponseBody(string $raw): array
     {
         $truncated = strlen($raw) > self::RESPONSE_BODY_CAP;
-        $raw = substr($raw, 0, self::RESPONSE_BODY_CAP);
+        if ($truncated) {
+            $raw = self::cutUtf8($raw, self::RESPONSE_BODY_CAP);
+        }
 
         try {
             return [json_decode($raw, true, 64, JSON_THROW_ON_ERROR), $truncated];
         } catch (\Throwable) {
             return [$raw, $truncated];
         }
+    }
+
+    /**
+     * The first $cap bytes, minus a multibyte character the cut would split:
+     * a broken sequence makes the whole heal payload invalid UTF-8.
+     */
+    public static function cutUtf8(string $raw, int $cap): string
+    {
+        $cut = substr($raw, 0, $cap);
+        $last = strlen($cut) - 1;
+        $continuation = 0;
+        while ($last >= 0 && (ord($cut[$last]) & 0xC0) === 0x80) {
+            $last--;
+            $continuation++;
+        }
+        if ($last < 0) {
+            return $cut;
+        }
+        $lead = ord($cut[$last]);
+        $expected = $lead >= 0xF0 ? 3 : ($lead >= 0xE0 ? 2 : ($lead >= 0xC0 ? 1 : 0));
+
+        return $expected > $continuation ? substr($cut, 0, $last) : $cut;
     }
 
     public static function healPayload(

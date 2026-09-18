@@ -37,6 +37,18 @@ final class HealApiTest extends TestCase
         ];
     }
 
+    public function testAnErrorBodyThatIsNotUtf8StillTravels(): void
+    {
+        $payload = $this->payload();
+        $payload['response']['body'] = "caf\xE9 non trouv\xE9";   // Latin-1, as many legacy error pages are
+
+        $this->api()->heal($payload);
+
+        $received = $this->stub->heals();
+        self::assertCount(1, $received, 'the capture must not be dropped');
+        self::assertSame("caf\u{FFFD} non trouv\u{FFFD}", $received[0]['response']['body']);
+    }
+
     public function testHealRoundTrip(): void
     {
         self::assertSame(['status' => 'no_patch', 'issueId' => 'stub-issue'], $this->api()->heal($this->payload()));

@@ -105,7 +105,16 @@ final class HealApi
             $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
         }
 
-        return self::withInternalCall(function () use ($method, $path, $body, $timeout, $headers): ?array {
+        // An upstream error body is whatever bytes the server sent: Latin-1
+        // pages, binary, a cut multibyte character. Substituting the invalid
+        // bytes keeps the capture; json_encode returning false would have sent
+        // an empty payload and lost it.
+        $json = json_encode($body, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if (!is_string($json)) {
+            return null;
+        }
+
+        return self::withInternalCall(function () use ($method, $path, $json, $timeout, $headers): ?array {
             $ch = curl_init($this->config->baseUrl . $path);
             if ($ch === false) {
                 return null;
@@ -113,7 +122,7 @@ final class HealApi
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CUSTOMREQUEST => $method,
-                CURLOPT_POSTFIELDS => json_encode($body),
+                CURLOPT_POSTFIELDS => $json,
                 CURLOPT_HTTPHEADER => $headers,
                 CURLOPT_TIMEOUT => $timeout,
                 CURLOPT_CONNECTTIMEOUT => $timeout,

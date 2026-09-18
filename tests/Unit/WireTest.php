@@ -83,6 +83,22 @@ final class WireTest extends TestCase
         self::assertSame(65536, strlen($text));
     }
 
+    public function testTheCapNeverSplitsAMultibyteCharacter(): void
+    {
+        // 7-byte prefix + 2-byte characters: a plain byte cut would end mid-character.
+        $raw = '{"ee":"' . str_repeat("\xC3\xA9", 40000) . '"}';
+        [$body, $truncated] = Wire::cappedResponseBody($raw);
+
+        self::assertTrue($truncated);
+        self::assertTrue(mb_check_encoding($body, 'UTF-8'));
+        self::assertSame(65535, strlen($body));
+
+        self::assertSame("ab\xE2\x82\xAC", Wire::cutUtf8("ab\xE2\x82\xACcd", 5));
+        self::assertSame('ab', Wire::cutUtf8("ab\xE2\x82\xACcd", 4), 'a 3-byte sequence cut after 2 bytes is dropped');
+        self::assertSame("\xF0\x9F\x98\x80", Wire::cutUtf8("\xF0\x9F\x98\x80\xF0\x9F\x98\x80", 6));
+        self::assertSame('abc', Wire::cutUtf8('abcdef', 3));
+    }
+
     public function testHealPayloadShape(): void
     {
         $payload = Wire::healPayload(
