@@ -76,16 +76,40 @@ final class CurlHookTest extends TestCase
         self::assertStringContainsString('too big', $raw);
     }
 
-    public function testNoHealAttemptIsOpened(): void
+    public function testAnAttemptTheServerOpensIsClosedAsNotAttempted(): void
     {
+        // The payload does not say the capture came from raw curl, so the
+        // server may open an attempt like for any other capture. Nothing is
+        // replayed; the attempt must not wait forever for an answer.
         $this->manifest->setResult([
             'status' => 'patched',
             'healAttemptId' => 'a1',
             'healedRequest' => ['body' => ['limit' => 100]],
         ]);
-        $this->post('/orders', ['limit' => 500]);
+        [$status] = $this->post('/orders', ['limit' => 500]);
 
-        self::assertSame([], $this->manifest->outcomes(), 'nothing was replayed, so nothing is adjudicated');
+        self::assertSame(400, $status, 'raw curl is never healed');
+        self::assertSame(
+            [['a1', ['failure' => ['kind' => 'not_attempted', 'message' => 'replay_not_attempted']]]],
+            $this->manifest->outcomes(),
+        );
+    }
+
+    public function testTheRequestHeadersTravelMasked(): void
+    {
+        $ch = curl_init($this->upstream->url . '/orders');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode(['limit' => 500]),
+        ]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Authorization: Bearer app-secret', 'X-Trace: t1']);
+        curl_exec($ch);
+
+        $sent = $this->manifest->heals()[0]['request']['headers'];
+        self::assertSame('application/json', $sent['content-type']);
+        self::assertSame('REDACTED', $sent['authorization']);
+        self::assertSame('t1', $sent['x-trace']);
     }
 
     public function testASuccessIsNotCaptured(): void
