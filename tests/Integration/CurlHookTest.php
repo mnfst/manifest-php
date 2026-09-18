@@ -125,6 +125,21 @@ final class CurlHookTest extends TestCase
         self::assertCount(1, $this->manifest->heals());
     }
 
+    public function testWordPressTrafficIsLeftToTheRequestsHook(): void
+    {
+        // Requests' curl transport uses curl_exec; the curl hook must defer to
+        // the WordPress hook so a WP call is captured once, not twice.
+        \Mnfst\Hooks\WordPress::install(
+            \Mnfst\Config::resolve('k', $this->manifest->url),
+            new \Mnfst\HealApi(\Mnfst\Config::resolve('k', $this->manifest->url)),
+        );
+        $this->manifest->setResult(['status' => 'no_patch']);
+
+        \WpOrg\Requests\Requests::post($this->upstream->url . '/orders', ['Content-Type' => 'application/json'], json_encode(['limit' => 500]));
+
+        self::assertCount(1, $this->manifest->heals(), 'the WordPress hook captures it; the curl hook defers');
+    }
+
     public function testGuzzleTrafficIsLeftToTheGuzzleHook(): void
     {
         // Guzzle runs on curl underneath. With both hooks installed the failure

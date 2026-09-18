@@ -138,6 +138,7 @@ Check your [Manifest dashboard](https://dashboard.manifest.build) to see all rep
 | Guzzle, any client, including one built inside a third-party library | ✅ healed |
 | CakePHP's `Cake\Http\Client` | ✅ healed |
 | Symfony's `HttpClient` (curl & native transports) | ✅ healed |
+| WordPress `wp_remote_*` / `WpOrg\Requests` | ✅ healed |
 | A library with its own raw `curl_*` client, such as `stripe/stripe-php` | ⚠️ **captured, never healed** |
 | `file_get_contents` | ❌ not seen |
 

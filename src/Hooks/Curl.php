@@ -110,8 +110,10 @@ final class Curl
     {
         foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 16) as $frame) {
             $class = $frame['class'] ?? '';
-            if (str_starts_with($class, 'GuzzleHttp\\') || str_starts_with($class, 'Cake\\Http\\Client')) {
-                return true;
+            foreach (['GuzzleHttp\\', 'Cake\\Http\\Client', 'Symfony\\Component\\HttpClient', 'WpOrg\\Requests'] as $managed) {
+                if (str_starts_with($class, $managed)) {
+                    return true;
+                }
             }
         }
 

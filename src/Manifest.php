@@ -6,6 +6,7 @@ use Mnfst\Hooks\Cake;
 use Mnfst\Hooks\Curl;
 use Mnfst\Hooks\Guzzle;
 use Mnfst\Hooks\Symfony;
+use Mnfst\Hooks\WordPress;
 
 final class Manifest
 {
@@ -28,6 +29,7 @@ final class Manifest
         Guzzle::install($config, $api);
         Cake::install($config, $api);
         Symfony::install($config, $api);
+        WordPress::install($config, $api);
         Curl::install($config, $api);
 
         if (!self::$started) {
