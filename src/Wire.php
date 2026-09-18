@@ -187,7 +187,7 @@ final class Wire
         }
 
         try {
-            return [json_decode($raw, true, 64, JSON_THROW_ON_ERROR), $truncated];
+            return [Json::decode($raw), $truncated];
         } catch (\Throwable) {
             return [$raw, $truncated];
         }

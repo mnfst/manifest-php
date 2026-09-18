@@ -43,9 +43,11 @@ class StubManifest
         return __DIR__ . '/stub-router.php';
     }
 
+    /** The heal answer, sent back byte for byte: `{}` and `10.0` must reach the SDK as written. */
     public function setResult(?array $result): void
     {
-        $this->writeState(['result' => $result]);
+        $json = $result === null ? null : json_encode($result, JSON_PRESERVE_ZERO_FRACTION | JSON_UNESCAPED_SLASHES);
+        $this->writeState(['result' => $json]);
     }
 
     public function setDisabled(bool $disabled): void

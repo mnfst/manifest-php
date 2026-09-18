@@ -59,10 +59,6 @@ final class Bodies
             return http_build_query($body);
         }
 
-        try {
-            return json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-        } catch (\Throwable) {
-            return null;
-        }
+        return Json::encode($body);
     }
 }

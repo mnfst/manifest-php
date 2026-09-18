@@ -69,7 +69,11 @@ final class HealApi
             return null;
         }
 
-        $decoded = json_decode($raw, true);
+        try {
+            $decoded = Json::decode($raw);
+        } catch (\Throwable) {
+            return null;
+        }
 
         return is_array($decoded) ? $decoded : null;
     }

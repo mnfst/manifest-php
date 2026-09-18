@@ -41,7 +41,7 @@ if ($path === '/v1/hello') {
 
 if ($path === '/v1/heal') {
     $append('heals', is_array($body) ? $body : []);
-    echo json_encode($current['result'] ?? ['status' => 'no_patch', 'issueId' => 'stub-issue']);
+    echo $current['result'] ?? json_encode(['status' => 'no_patch', 'issueId' => 'stub-issue']);
 
     return true;
 }

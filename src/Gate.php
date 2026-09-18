@@ -38,7 +38,7 @@ final class Gate
         }
 
         try {
-            return json_decode($body, true, self::MAX_DEPTH, JSON_THROW_ON_ERROR);
+            return Json::decode($body);
         } catch (\Throwable) {
             return null;
         }

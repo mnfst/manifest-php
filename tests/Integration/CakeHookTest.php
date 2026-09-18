@@ -121,6 +121,16 @@ final class CakeHookTest extends TestCase
         self::assertSame([['a1', ['response' => ['statusCode' => 200]]]], $this->manifest->outcomes());
     }
 
+    public function testEmptyObjectsAndFloatsReachTheUpstreamUnchanged(): void
+    {
+        $this->healTo(['url' => $this->upstream->url . '/search?query=x', 'body' => ['limit' => 10.0, 'meta' => new \stdClass()]]);
+
+        $response = (new Client())->post($this->upstream->url . '/search?page=1&page=2', '{"limit":500,"meta":{}}', ['type' => 'json']);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('{"limit":10.0,"meta":{}}', $response->getJson()['body'], 'what the upstream received on the retry');
+    }
+
     public function testTheServerSeesTheQueryExactlyAsSent(): void
     {
         $this->manifest->setResult(['status' => 'no_patch']);

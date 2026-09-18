@@ -20,20 +20,27 @@ final class Merge
             return $healed;
         }
 
-        $merged = $healed;
-        $traveledKeys = self::isObject($traveled) ? $traveled : [];
+        $merged = self::keys($healed);
+        $traveledKeys = self::isObject($traveled) ? self::keys($traveled) : [];
 
-        foreach ($original as $key => $value) {
+        foreach (self::keys($original) as $key => $value) {
             if (!array_key_exists($key, $traveledKeys) && !array_key_exists($key, $merged)) {
                 $merged[$key] = $value;
             }
         }
 
-        return $merged;
+        return $merged === [] ? new \stdClass() : $merged;
     }
 
+    /** An object: an associative array, or the empty object json_decode cannot express as one. */
     private static function isObject(mixed $value): bool
     {
-        return is_array($value) && !array_is_list($value);
+        return (is_array($value) && !array_is_list($value)) || Json::isEmptyObject($value);
+    }
+
+    /** @return array<string|int, mixed> */
+    private static function keys(mixed $object): array
+    {
+        return is_array($object) ? $object : [];
     }
 }
