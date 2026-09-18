@@ -6,11 +6,17 @@ use Cake\Http\Client;
 use Cake\Http\Client\Request as CakeRequest;
 use Cake\Http\Client\Response as CakeResponse;
 use Laminas\Diactoros\Stream;
+use Mnfst\Capture;
 use Mnfst\Config;
+use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
+use Mnfst\Replay;
 use Mnfst\Retry;
+use Mnfst\Streams;
+use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 
 use function OpenTelemetry\Instrumentation\hook;
 
@@ -41,13 +47,7 @@ final class Cake
         if (!class_exists(Client::class) || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$healer = new Healer($config, $api, static function (string $raw): Stream {
-            $stream = new Stream('php://memory', 'wb+');
-            $stream->write($raw);
-            $stream->rewind();
-
-            return $stream;
-        });
+        self::$healer = new Healer($config, $api);
         if (self::$installed) {
             return false;
         }
@@ -65,20 +65,31 @@ final class Cake
                     return $response;
                 }
                 $request = $params[0] ?? null;
-                if (!$request instanceof RequestInterface) {
+                if (!$request instanceof RequestInterface || !Gate::shouldCapture($response->getStatusCode())) {
                     return $response;
                 }
                 $options = is_array($params[1] ?? null) ? $params[1] : [];
                 $sender = $client instanceof Client ? $client : new Client();
 
-                $outcome = self::$healer->attempt(
-                    $request,
-                    $response,
+                [$body, $oversized] = Streams::read($request->getBody(), Gate::REQUEST_BODY_LIMIT);
+                [$responseBody, $response] = Streams::readResponse($response, self::streamFor(...));
+                $capture = new Capture(
+                    $request->getMethod(),
+                    (string) $request->getUri(),
+                    $request->getHeaders(),
+                    $body,
+                    $oversized,
+                    $response->getStatusCode(),
+                    $responseBody,
                     $started,
-                    static fn (Retry $retry): CakeResponse => $sender->send(self::request($request, $retry), $options),
                 );
+                $replay = self::$healer->attempt($capture, static function (Retry $retry) use ($sender, $request, $options): Replay {
+                    $replayed = $sender->send(self::request($request, $retry), $options);
 
-                return $outcome instanceof CakeResponse ? $outcome : $response;
+                    return new Replay($replayed->getStatusCode(), Streams::read($replayed->getBody(), Wire::RESPONSE_BODY_CAP)[0], $replayed);
+                });
+
+                return $replay?->response instanceof CakeResponse ? $replay->response : $response;
             },
         );
 
@@ -90,5 +101,15 @@ final class Cake
     {
         return (new CakeRequest($retry->url, $original->getMethod(), $retry->headers, $retry->body))
             ->withProtocolVersion($original->getProtocolVersion());
+    }
+
+    /** A body stream the way Cake builds them. */
+    private static function streamFor(string $raw): Stream
+    {
+        $stream = new Stream('php://memory', 'wb+');
+        $stream->write($raw);
+        $stream->rewind();
+
+        return $stream;
     }
 }

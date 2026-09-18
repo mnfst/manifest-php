@@ -9,10 +9,15 @@ use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\Utils;
+use Mnfst\Capture;
 use Mnfst\Config;
+use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
+use Mnfst\Replay;
 use Mnfst\Retry;
+use Mnfst\Streams;
+use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -52,7 +57,7 @@ final class Guzzle
         if (!class_exists(Client::class) || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$healer = new Healer($config, $api, static fn (string $raw): StreamInterface => Utils::streamFor($raw));
+        self::$healer = new Healer($config, $api);
         if (self::$installed) {
             return false;
         }
@@ -75,14 +80,13 @@ final class Guzzle
                 $send = self::sender($client, $request, is_array($params[1] ?? null) ? $params[1] : []);
 
                 return $promise->then(
-                    static fn (ResponseInterface $response): ResponseInterface
-                        => self::$healer?->attempt($request, $response, $started, $send) ?? $response,
+                    static fn (ResponseInterface $response): ResponseInterface => self::outcome($request, $response, $started, $send),
                     static function (mixed $reason) use ($request, $started, $send): mixed {
-                        if (!$reason instanceof BadResponseException || self::$healer === null) {
+                        if (!$reason instanceof BadResponseException) {
                             return Create::rejectionFor($reason);
                         }
                         $original = $reason->getResponse();
-                        $outcome = self::$healer->attempt($request, $original, $started, $send);
+                        $outcome = self::outcome($request, $original, $started, $send);
                         if ($outcome === $original) {
                             return Create::rejectionFor($reason);
                         }
@@ -102,14 +106,47 @@ final class Guzzle
         return true;
     }
 
-    /** @return callable(Retry): ResponseInterface */
+    /**
+     * The response the caller gets: the retry's, or the original one, rebuilt
+     * when the SDK had to consume its body to read it.
+     *
+     * @param callable(Retry): Replay $send
+     */
+    private static function outcome(RequestInterface $request, ResponseInterface $response, float $started, callable $send): ResponseInterface
+    {
+        if (self::$healer === null || !Gate::shouldCapture($response->getStatusCode())) {
+            return $response;
+        }
+        [$body, $oversized] = Streams::read($request->getBody(), Gate::REQUEST_BODY_LIMIT);
+        [$responseBody, $response] = Streams::readResponse($response, static fn (string $raw): StreamInterface => Utils::streamFor($raw));
+        $capture = new Capture(
+            $request->getMethod(),
+            (string) $request->getUri(),
+            $request->getHeaders(),
+            $body,
+            $oversized,
+            $response->getStatusCode(),
+            $responseBody,
+            $started,
+        );
+        $replay = self::$healer->attempt($capture, $send);
+
+        return $replay?->response instanceof ResponseInterface ? $replay->response : $response;
+    }
+
+    /** @return callable(Retry): Replay */
     private static function sender(mixed $client, RequestInterface $original, array $options): callable
     {
         $sender = $client instanceof Client ? $client : new Client();
         $options = array_diff_key($options, array_flip(self::CONSUMED_OPTIONS));
         $options['http_errors'] = false;
 
-        return static fn (Retry $retry): ResponseInterface => $sender->send(self::request($original, $retry), $options);
+        return static function (Retry $retry) use ($sender, $original, $options): Replay {
+            $replayed = $sender->send(self::request($original, $retry), $options);
+            [$body, $replayed] = Streams::readResponse($replayed, static fn (string $raw): StreamInterface => Utils::streamFor($raw));
+
+            return new Replay($replayed->getStatusCode(), $body, $replayed);
+        };
     }
 
     /** The original request with the healed URL, headers and body swapped in. */
