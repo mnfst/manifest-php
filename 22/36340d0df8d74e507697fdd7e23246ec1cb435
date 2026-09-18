@@ -1,0 +1,21 @@
+README.md
+  s_2fe8ca2013d17b::t_e329bf8948dfba 1-115
+docs/guide.md
+  s_2fe8ca2013d17b::t_e31769a198dd9a 1-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2236340d0df8d74e507697fdd7e23246ec1cb435",
+  "prompts": {},
+  "sessions": {
+    "s_2fe8ca2013d17b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "407ad9da-64dd-4a23-887c-4d6439f79e95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
