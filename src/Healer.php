@@ -49,7 +49,10 @@ final class Healer
         $replayAttempted = false;
         try {
             $contentType = Bodies::contentTypeOf($request->getHeaders());
-            [$body, $replayable] = Bodies::parseRequestBody($this->read($request->getBody()), $contentType);
+            [$requestBody, $oversized] = $this->read($request->getBody(), Gate::REQUEST_BODY_LIMIT);
+            [$body, $replayable] = $oversized
+                ? [null, false]   // past the limit it is a payload, not a form to repair: reported absent, not retried
+                : Bodies::parseRequestBody($requestBody, $contentType);
             [$raw, $response] = $this->readResponse($response);
             [$responseBody, $truncated] = Wire::cappedResponseBody($raw);
 
@@ -117,40 +120,60 @@ final class Healer
     }
 
     /**
-     * The whole stream as a string, without leaving a mark: a seekable stream
-     * is put back where it was, so the caller's own getContents() still works.
+     * Up to $limit bytes of a stream plus one to know it holds more, without
+     * leaving a mark: a seekable stream is put back where it was, so the
+     * caller's own getContents() still works. A 40 MB upload that failed
+     * with a 413 is never copied into memory to learn it is over the limit.
+     *
+     * @return array{0: string, 1: bool} the bytes read and whether the stream holds more than $limit
      */
-    private function read(StreamInterface $stream): string
+    private function read(StreamInterface $stream, int $limit): array
     {
-        if (!$stream->isSeekable()) {
-            return $stream->getContents();
+        $size = $stream->getSize();
+        if ($size !== null && $size > $limit) {
+            return ['', true];
         }
-        $position = $stream->tell();
-        $stream->rewind();
+        $seekable = $stream->isSeekable();
+        $position = $seekable ? $stream->tell() : 0;
+        if ($seekable) {
+            $stream->rewind();
+        }
         try {
-            return $stream->getContents();
+            $raw = '';
+            while (!$stream->eof() && strlen($raw) <= $limit) {
+                $chunk = $stream->read(min(65536, $limit + 1 - strlen($raw)));
+                if ($chunk === '') {
+                    break;
+                }
+                $raw .= $chunk;
+            }
+
+            return [$raw, strlen($raw) > $limit];
         } finally {
-            $stream->seek($position);
+            if ($seekable) {
+                $stream->seek($position);
+            }
         }
     }
 
     /**
-     * The response body, and a response the caller can still read it from. A
-     * non-seekable body (Guzzle `stream => true`) is consumed by reading, so
-     * it is replaced by an in-memory copy when the client gave us a way to
-     * build one.
+     * The response body, capped, and a response the caller can still read it
+     * from. A seekable body is read up to the cap plus one byte, enough to
+     * know it was cut. A non-seekable one (Guzzle `stream => true`) is
+     * consumed by reading, so it is read whole and replaced by an in-memory
+     * copy when the client gave us a way to build one.
      *
      * @return array{0: string, 1: ResponseInterface}
      */
     private function readResponse(ResponseInterface $response): array
     {
         $stream = $response->getBody();
-        $raw = $this->read($stream);
-        if (!$stream->isSeekable() && $this->streamFor !== null) {
-            $response = $response->withBody(($this->streamFor)($raw));
+        if ($stream->isSeekable() || $this->streamFor === null) {
+            return [$this->read($stream, Wire::RESPONSE_BODY_CAP)[0], $response];
         }
+        $raw = $stream->getContents();
 
-        return [$raw, $response];
+        return [$raw, $response->withBody(($this->streamFor)($raw))];
     }
 
     /** Close an attempt we opened but could not replay. */

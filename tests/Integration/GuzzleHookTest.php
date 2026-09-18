@@ -8,6 +8,7 @@ use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\HealEvent;
 use Mnfst\Hooks\Guzzle;
+use Mnfst\Tests\Support\CountingStream;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -224,6 +225,24 @@ final class GuzzleHookTest extends TestCase
         self::assertSame('patched', $this->events[0]->healStatus);
         self::assertSame(400, $this->events[0]->statusCode);
         self::assertSame(200, $this->events[0]->replayStatusCode);
+    }
+
+    public function testAnOversizedRequestBodyIsNotReadIntoMemory(): void
+    {
+        $this->manifest->setResult(['status' => 'no_patch']);
+        $client = new Client(['http_errors' => false]);
+
+        $known = new CountingStream(str_repeat('x', 3 * 1024 * 1024));
+        $client->post($this->upstream->url . '/search?page=1&page=2', ['body' => $known, 'headers' => ['Content-Type' => 'text/plain']]);
+        // Guzzle itself reads the whole body to send it; the SDK must add nothing on top for a known size.
+        self::assertLessThanOrEqual(3 * 1024 * 1024, $known->bytesRead);
+
+        $unknown = new CountingStream(str_repeat('x', 3 * 1024 * 1024), knownSize: false);
+        $client->post($this->upstream->url . '/search?page=1&page=2', ['body' => $unknown, 'headers' => ['Content-Type' => 'text/plain']]);
+        self::assertLessThanOrEqual(3 * 1024 * 1024 + 256 * 1024 + 65536, $unknown->bytesRead, 'at most the limit plus one chunk');
+
+        self::assertCount(2, $this->manifest->heals());
+        self::assertNull($this->manifest->heals()[0]['request']['body']);
     }
 
     public function testConcurrentAsyncRequestsAreBothHealed(): void
