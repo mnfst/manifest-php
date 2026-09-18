@@ -32,10 +32,17 @@ final class Config
 
     public static function resolve(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): self
     {
-        $key = $apiKey ?? self::env('MNFST_KEY');
-        $base = $url ?? self::env('MNFST_URL') ?? self::HOSTED_URL;
+        // An empty argument is what a framework's config() yields for an unset or
+        // blanked variable (phpunit.xml's `<env name="MNFST_KEY" value=""/>`): unset.
+        $key = self::blank($apiKey) ? self::env('MNFST_KEY') : $apiKey;
+        $base = (self::blank($url) ? self::env('MNFST_URL') : $url) ?? self::HOSTED_URL;
 
         return new self($key, rtrim($base, '/'), $onHeal);
+    }
+
+    private static function blank(?string $value): bool
+    {
+        return $value === null || trim($value) === '';
     }
 
     /**

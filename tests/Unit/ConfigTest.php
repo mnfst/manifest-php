@@ -30,6 +30,9 @@ final class ConfigTest extends TestCase
         $_ENV['MNFST_KEY'] = '';
         putenv('MNFST_KEY=');
         self::assertNull(Config::resolve()->apiKey);
+        self::assertNull(Config::resolve('')->apiKey, 'config() hands over an empty string for a blanked variable');
+        self::assertNull(Config::resolve(' ')->apiKey);
+        self::assertSame(Config::HOSTED_URL, Config::resolve(null, '')->baseUrl);
     }
 
     public function testArgumentBeatsEnvironment(): void
