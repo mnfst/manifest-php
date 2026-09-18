@@ -52,6 +52,12 @@ class StubManifest
         $this->writeState(['disabled' => $disabled]);
     }
 
+    /** Answer every call with the 401 a bad project key really gets. */
+    public function setRejectKey(bool $reject): void
+    {
+        $this->writeState(['rejectKey' => $reject]);
+    }
+
     /** @return array<int, array> the heal payloads received, oldest first */
     public function heals(): array
     {

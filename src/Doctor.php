@@ -53,9 +53,28 @@ final class Doctor
 
     private static function reportProject(Config $config): int
     {
-        $hello = self::hello($config);
-        if ($hello === null) {
+        $answer = self::hello($config);
+        if ($answer === null) {
             self::line('  server    unreachable at ' . $config->baseUrl);
+
+            return 1;
+        }
+
+        [$status, $hello] = $answer;
+
+        // CONTRACT: a 200 confirms the key; a 401, or a 403 whose body is not
+        // project_disabled, rejects it. Reporting a rejected key as an
+        // unreachable server sends the operator after the wrong problem.
+        if ($status !== 200) {
+            self::line($status === 403 && ($hello['error'] ?? null) === 'project_disabled'
+                ? '  server    accepted the key, but healing is disabled for this project'
+                : '  server    rejected the key (HTTP ' . $status . ') at ' . $config->baseUrl);
+
+            return 1;
+        }
+
+        if ($hello === null) {
+            self::line('  server    answered 200 with an unreadable body');
 
             return 1;
         }
@@ -85,6 +104,7 @@ final class Doctor
         return strlen($key) <= 8 ? '****' : substr($key, 0, 4) . str_repeat('*', 8) . substr($key, -2);
     }
 
+    /** @return array{0: int, 1: array|null}|null status and body, or null if unreachable */
     private static function hello(Config $config): ?array
     {
         $ch = curl_init($config->baseUrl . '/v1/hello');
@@ -105,12 +125,12 @@ final class Doctor
         $raw = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 
-        if (!is_string($raw) || $status !== 200) {
-            return null;
+        if (!is_string($raw) || $status === 0) {
+            return null;   // no HTTP response at all: genuinely unreachable
         }
         $body = json_decode($raw, true);
 
-        return is_array($body) ? $body : null;
+        return [$status, is_array($body) ? $body : null];
     }
 
     private static function line(string $text): void
