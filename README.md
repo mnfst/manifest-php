@@ -76,7 +76,25 @@ use function Mnfst\manifest;
 manifest();  // before any HTTP call
 ```
 
-Laravel and CakePHP need no code of their own.
+Laravel and CakePHP need no code of their own for coverage: their HTTP clients
+are instrumented. In Laravel, make the call from a service provider and keep it
+out of the test suite, where `Http::fake()` answers would be reported as real
+failures:
+
+```php
+// app/Providers/AppServiceProvider.php
+public function register(): void
+{
+    if ($this->app->runningUnitTests()) {
+        return;
+    }
+    manifest(config('services.manifest.key'), config('services.manifest.url'));
+}
+```
+
+with `'manifest' => ['key' => env('MNFST_KEY'), 'url' => env('MNFST_URL')]` in
+`config/services.php`. [The guide](docs/guide.md#laravel) explains why a
+`phpunit.xml` override alone does not keep it quiet under `php artisan test`.
 
 ## Setup
 

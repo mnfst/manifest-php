@@ -57,6 +57,24 @@ It prints the SDK version, the masked key, the coverage level, whether the SDK
 loads early enough, and the project name the key resolves to. It exits non-zero
 when any of those fail.
 
+## Laravel
+
+Call `manifest()` from a service provider's `register()` method, passing the
+key and URL from `config()` (Laravel's `.env` is read into `$_ENV`/`$_SERVER`,
+which the SDK also reads, but config is the Laravel way and survives
+`config:cache`). Every request through the `Http` facade is covered; a healed
+call fires one `ResponseReceived` event, with the healed response.
+
+Skip the call when `$this->app->runningUnitTests()`: `Http::fake()` answers go
+through the same Guzzle client and a faked 4xx is captured like a real one. A
+`phpunit.xml` `<env name="MNFST_KEY" value=""/>` is not enough under
+`php artisan test`: the artisan process hands its `$_SERVER`, `.env` values
+included, to PHPUnit as the real environment, and `<env>` never touches
+`$_SERVER`, which Laravel's `env()` reads first.
+
+`Http::retry()` retries a failed call; each attempt that fails is a capture of
+its own, so a failure Manifest cannot fix is reported once per attempt.
+
 ## Supported traffic
 
 Guzzle (every client in the process, whoever constructed it), Laravel's `Http`
