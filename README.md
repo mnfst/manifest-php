@@ -43,6 +43,18 @@ PHP cannot instrument an HTTP client without it, so the SDK sees nothing until i
 
 ## Get started
 
+### Start with your agent
+
+```
+"Install Manifest in this app: https://app-staging.manifest.build/prompt-php.md"
+```
+
+[Read the prompt →](https://app-staging.manifest.build/prompt-php.md)
+
+The prompt installs the extension, wires the loading order, and stops to let you paste your key.
+
+### Start with code
+
 ```sh
 composer require mnfst/manifest-php
 ```
