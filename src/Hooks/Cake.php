@@ -3,12 +3,17 @@
 namespace Mnfst\Hooks;
 
 use Cake\Http\Client;
+use Cake\Http\Client\Request as CakeRequest;
 use Cake\Http\Client\Response as CakeResponse;
-use Mnfst\Bodies;
+use Laminas\Diactoros\Stream;
+use Mnfst\Capture;
 use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
-use Mnfst\Merge;
+use Mnfst\Healer;
+use Mnfst\Replay;
+use Mnfst\Retry;
+use Mnfst\Streams;
 use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
 
@@ -16,8 +21,12 @@ use function OpenTelemetry\Instrumentation\hook;
 
 /**
  * Hook Cake\Http\Client::send — the funnel that post, get and the rest reach
- * through _doRequest. Cake has adapters rather than middleware, so there is no
- * stack to push onto; the hook is the only global insertion point.
+ * through _doRequest, and that sendRequest (PSR-18) calls too. Cake has
+ * adapters rather than middleware, so there is no stack to push onto; the hook
+ * is the only global insertion point.
+ *
+ * The retry goes through the same client instance with the same options, so
+ * the adapter, timeout, ssl and proxy settings of the original call apply.
  *
  * The post hook returns `mixed` and never null: a nullable return type plus an
  * early `return null` replaces the caller's response with null and fatals the
@@ -27,15 +36,17 @@ final class Cake
 {
     private static bool $installed = false;
 
-    /** @var array{config: Config, api: HealApi}|null */
-    private static ?array $deps = null;
+    private static ?Healer $healer = null;
+
+    /** @var list<float> start times of the sends in flight, innermost last */
+    private static array $started = [];
 
     public static function install(Config $config, HealApi $api): bool
     {
         if (!class_exists(Client::class) || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$deps = ['config' => $config, 'api' => $api];
+        self::$healer = new Healer($config, $api);
         if (self::$installed) {
             return false;
         }
@@ -44,93 +55,60 @@ final class Cake
         hook(
             Client::class,
             'send',
+            pre: static function (): void {
+                self::$started[] = microtime(true);
+            },
             post: static function (mixed $client, array $params, mixed $response, ?\Throwable $exception): mixed {
-                if (!$response instanceof CakeResponse || HealApi::isInternalCall()) {
+                $started = array_pop(self::$started) ?? microtime(true);
+                if (!$response instanceof CakeResponse || HealApi::isInternalCall() || self::$healer === null) {
                     return $response;
                 }
                 $request = $params[0] ?? null;
-                if (!$request instanceof RequestInterface) {
+                if (!$request instanceof RequestInterface || !Gate::shouldCapture($response->getStatusCode())) {
                     return $response;
                 }
+                $options = is_array($params[1] ?? null) ? $params[1] : [];
+                $sender = $client instanceof Client ? $client : new Client();
 
-                return self::attempt($request, $response) ?? $response;
+                [$body, $oversized] = Streams::read($request->getBody(), Gate::REQUEST_BODY_LIMIT);
+                [$responseBody, $response] = Streams::readResponse($response, self::streamFor(...));
+                $capture = new Capture(
+                    $request->getMethod(),
+                    (string) $request->getUri(),
+                    $request->getHeaders(),
+                    $body,
+                    $oversized,
+                    $response->getStatusCode(),
+                    $responseBody,
+                    $started,
+                );
+                $replay = self::$healer->attempt($capture, static function (Retry $retry) use ($sender, $request, $options): Replay {
+                    $replayed = $sender->send(self::request($request, $retry), $options);
+
+                    return new Replay($replayed->getStatusCode(), Streams::read($replayed->getBody(), Wire::RESPONSE_BODY_CAP)[0], $replayed);
+                });
+
+                return $replay?->response instanceof CakeResponse ? $replay->response : $response;
             },
         );
 
         return true;
     }
 
-    private static function attempt(RequestInterface $request, CakeResponse $response): ?CakeResponse
+    /** The original request with the healed URL, headers and body swapped in. */
+    private static function request(RequestInterface $original, Retry $retry): CakeRequest
     {
-        try {
-            if (self::$deps === null || !Gate::shouldCapture($response->getStatusCode())) {
-                return null;
-            }
-            $api = self::$deps['api'];
-
-            $contentType = Bodies::contentTypeOf($request->getHeaders());
-            [$body, $replayable] = Bodies::parseRequestBody((string) $request->getBody(), $contentType);
-            [$responseBody, $truncated] = Wire::cappedResponseBody($response->getStringBody());
-
-            $result = $api->heal(Wire::healPayload(
-                bin2hex(random_bytes(16)),
-                $request->getMethod(),
-                (string) $request->getUri(),
-                $request->getHeaders(),
-                $body,
-                $response->getStatusCode(),
-                $responseBody,
-                $truncated,
-                0,
-            ));
-
-            if (!is_array($result)) {
-                return null;
-            }
-
-            $attemptId = $result['healAttemptId'] ?? null;
-            $healedRequest = $result['healedRequest'] ?? null;
-
-            if (!in_array($result['status'] ?? null, ['patched', 'unverified'], true)
-                || !is_array($healedRequest)
-                || !array_key_exists('body', $healedRequest)
-                || !$replayable
-            ) {
-                self::abandon($api, $attemptId);
-
-                return null;
-            }
-
-            $merged = Merge::healedBody($body, Wire::travelingBody($body), $healedRequest['body']);
-            $encoded = Bodies::encodeRequestBody($merged, $contentType);
-            if ($encoded === null) {
-                self::abandon($api, $attemptId);
-
-                return null;
-            }
-
-            $type = str_contains($contentType, 'json') || $contentType === '' ? 'json' : 'form';
-            $replayed = HealApi::withInternalCall(
-                static fn (): CakeResponse => (new Client())
-                    ->post((string) $request->getUri(), $encoded, ['type' => $type]),
-            );
-
-            if (is_string($attemptId)) {
-                $status = $replayed->getStatusCode();
-                $failedBody = $status >= 400 ? Wire::cappedResponseBody($replayed->getStringBody())[0] : null;
-                $api->reportOutcome($attemptId, $status, is_array($failedBody) ? $failedBody : null);
-            }
-
-            return $replayed;
-        } catch (\Throwable) {
-            return null;
-        }
+        return (new CakeRequest($retry->url, $original->getMethod(), $retry->headers, $retry->body))
+            ->withProtocolVersion($original->getProtocolVersion());
     }
 
-    private static function abandon(HealApi $api, mixed $attemptId): void
+    /** A body stream the way Cake builds them. */
+    private static function streamFor(string $raw): Stream
     {
-        if (is_string($attemptId)) {
-            $api->reportOutcome($attemptId, null, null, HealApi::NOT_ATTEMPTED);
-        }
+        $stream = new Stream('php://memory', 'wb+');
+        $stream->write($raw);
+        $stream->rewind();
+
+        return $stream;
     }
 }

@@ -5,6 +5,8 @@ namespace Mnfst;
 use Mnfst\Hooks\Cake;
 use Mnfst\Hooks\Curl;
 use Mnfst\Hooks\Guzzle;
+use Mnfst\Hooks\Symfony;
+use Mnfst\Hooks\WordPress;
 
 final class Manifest
 {
@@ -12,28 +14,62 @@ final class Manifest
 
     private static bool $started = false;
 
+    /**
+     * Idempotent: frameworks boot more than once per process (Laravel's test
+     * runner boots the app for every test, and turns any PHP warning into an
+     * exception), and auto_prepend_file plus a bootstrap call is a common
+     * double. The hooks are process-global and installed once; a later call
+     * only refreshes the configuration they use.
+     */
     public static function start(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): void
     {
-        if (self::$started) {
-            trigger_error('manifest() was already called; the second call is ignored', E_USER_WARNING);
-
+        // A test suite fakes its HTTP: Http::fake(), Guzzle's MockHandler,
+        // Symfony's MockHttpClient. Those faked 4xx go through the real client
+        // and would be reported to Manifest as failures that never happened,
+        // filling the dashboard and, with a real key, hitting the live project.
+        // So manifest() installs nothing under a test runner unless MNFST_IN_TESTS
+        // opts in (the SDK's own suite does). auto_prepend_file installs, which
+        // cannot guard themselves in app code, are covered by this too.
+        if (self::inTestRunner() && !self::healsInTests()) {
             return;
         }
-        self::$started = true;
 
         $config = Config::resolve($apiKey, $url, $onHeal);
         $api = new HealApi($config);
 
         Guzzle::install($config, $api);
         Cake::install($config, $api);
+        Symfony::install($config, $api);
+        WordPress::install($config, $api);
         Curl::install($config, $api);
 
-        (new Handshake($config))->announce();
+        if (!self::$started) {
+            self::$started = true;
+            (new Handshake($config))->announce();
+        }
     }
 
     /** True when the opentelemetry extension is present, so full coverage is active. */
     public static function hasFullCoverage(): bool
     {
         return function_exists('OpenTelemetry\Instrumentation\hook');
+    }
+
+    /**
+     * True when a PHPUnit or Pest run is in progress: their faked HTTP must not
+     * be captured. Both constants are defined by the runner's own bootstrap, so
+     * they are set during a test run and not merely because a framework
+     * autoloaded a PHPUnit class (Laravel's artisan loads PHPUnit\Runner\Version
+     * even under `serve`, which must stay instrumented).
+     */
+    public static function inTestRunner(): bool
+    {
+        return defined('PHPUNIT_COMPOSER_INSTALL') || defined('PEST_VERSION');
+    }
+
+    /** Opt back in to healing during tests with MNFST_IN_TESTS=1 (integration tests against a real server). */
+    private static function healsInTests(): bool
+    {
+        return filter_var((string) Config::env('MNFST_IN_TESTS'), FILTER_VALIDATE_BOOLEAN);
     }
 }

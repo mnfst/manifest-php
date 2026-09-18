@@ -14,14 +14,32 @@ final class HealApi
      */
     public const NOT_ATTEMPTED = 'replay_not_attempted';
 
+    /** A disabled project or a rejected key: nothing will change for a while. */
     private const DISABLED_BACKOFF_SECONDS = 300;
+
+    /** A server that timed out, failed or could not be reached: try again soon, not on the very next failure. */
+    private const UNREACHABLE_BACKOFF_SECONDS = 60;
+
     private const MAX_HEAL_RESPONSE = 1048576;
 
     private static bool $internalCall = false;
-    private float $disabledUntil = 0.0;
 
     public function __construct(private readonly Config $config)
     {
+    }
+
+    /**
+     * PHP keeps nothing between requests, so the backoff lives in a marker
+     * file whose mtime is the deadline (like the handshake marker). Without
+     * it every php-fpm worker would learn the project is disabled on its own
+     * failing request, and a hanging server would cost the heal timeout on
+     * every failure instead of once a minute.
+     */
+    public function backoffPath(): string
+    {
+        $fingerprint = substr(hash('sha256', $this->config->baseUrl . '|' . ($this->config->apiKey ?? '')), 0, 16);
+
+        return sys_get_temp_dir() . '/mnfst-backoff-' . $fingerprint;
     }
 
     /** True while the SDK is making its own call, so hooks can skip it. */
@@ -43,7 +61,14 @@ final class HealApi
 
     public function healingEnabled(): bool
     {
-        return microtime(true) >= $this->disabledUntil;
+        $deadline = @filemtime($this->backoffPath());
+
+        return $deadline === false || $deadline <= time();
+    }
+
+    private function backOff(int $seconds): void
+    {
+        @touch($this->backoffPath(), time() + $seconds);
     }
 
     public function heal(array $payload): ?array
@@ -54,13 +79,21 @@ final class HealApi
 
         $response = $this->send('POST', '/v1/heal', $payload, Config::HEAL_TIMEOUT_SECONDS);
         if ($response === null) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
+
             return null;
         }
 
         [$status, $raw] = $response;
 
-        if ($status === 403 && $this->isProjectDisabled($raw)) {
-            $this->disabledUntil = microtime(true) + self::DISABLED_BACKOFF_SECONDS;
+        if (($status === 403 && $this->isProjectDisabled($raw)) || $status === 401) {
+            $this->backOff(self::DISABLED_BACKOFF_SECONDS);
+
+            return null;
+        }
+
+        if ($status >= 500) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
 
             return null;
         }
@@ -69,7 +102,11 @@ final class HealApi
             return null;
         }
 
-        $decoded = json_decode($raw, true);
+        try {
+            $decoded = Json::decode($raw);
+        } catch (\Throwable) {
+            return null;
+        }
 
         return is_array($decoded) ? $decoded : null;
     }
@@ -79,6 +116,7 @@ final class HealApi
         ?int $retryStatusCode,
         ?array $retryBody = null,
         ?string $error = null,
+        bool $truncated = false,
     ): void {
         if ($error !== null) {
             $body = ['failure' => [
@@ -89,7 +127,7 @@ final class HealApi
             $response = ['statusCode' => $retryStatusCode];
             if ($retryBody !== null) {
                 $response['body'] = $retryBody;
-                $response['truncated'] = false;
+                $response['truncated'] = $truncated;
             }
             $body = ['response' => $response];
         }
@@ -100,12 +138,25 @@ final class HealApi
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
     private function send(string $method, string $path, array $body, int $timeout): ?array
     {
-        $headers = ['Content-Type: application/json', 'User-Agent: mnfst-php/' . Manifest::VERSION];
-        if ($this->config->apiKey !== null) {
-            $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
+        if ($this->config->apiKey === null) {
+            return null;   // without a key nothing is sent: the server would only answer 401
+        }
+        $headers = [
+            'Content-Type: application/json',
+            'User-Agent: mnfst-php/' . Manifest::VERSION,
+            'Authorization: Bearer ' . $this->config->apiKey,
+        ];
+
+        // An upstream error body is whatever bytes the server sent: Latin-1
+        // pages, binary, a cut multibyte character. Substituting the invalid
+        // bytes keeps the capture; json_encode returning false would have sent
+        // an empty payload and lost it.
+        $json = json_encode($body, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
+        if (!is_string($json)) {
+            return null;
         }
 
-        return self::withInternalCall(function () use ($method, $path, $body, $timeout, $headers): ?array {
+        return self::withInternalCall(function () use ($method, $path, $json, $timeout, $headers): ?array {
             $ch = curl_init($this->config->baseUrl . $path);
             if ($ch === false) {
                 return null;
@@ -113,7 +164,7 @@ final class HealApi
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CUSTOMREQUEST => $method,
-                CURLOPT_POSTFIELDS => json_encode($body),
+                CURLOPT_POSTFIELDS => $json,
                 CURLOPT_HTTPHEADER => $headers,
                 CURLOPT_TIMEOUT => $timeout,
                 CURLOPT_CONNECTTIMEOUT => $timeout,

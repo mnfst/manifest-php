@@ -13,10 +13,12 @@ $current = $read();
 header('Content-Type: application/json');
 
 if ($path === '/__ready') {
-    echo json_encode(['ready' => true]);
+    echo json_encode(['ready' => true, 'token' => getenv('MNFST_STUB_TOKEN')]);
 
     return true;
 }
+
+$append('requests', ['method' => $_SERVER['REQUEST_METHOD'], 'path' => $path]);
 
 if ($current['rejectKey'] ?? false) {
     http_response_code(401);
@@ -41,7 +43,7 @@ if ($path === '/v1/hello') {
 
 if ($path === '/v1/heal') {
     $append('heals', is_array($body) ? $body : []);
-    echo json_encode($current['result'] ?? ['status' => 'no_patch', 'issueId' => 'stub-issue']);
+    echo $current['result'] ?? json_encode(['status' => 'no_patch', 'issueId' => 'stub-issue']);
 
     return true;
 }

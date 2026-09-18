@@ -32,9 +32,32 @@ final class Config
 
     public static function resolve(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): self
     {
-        $key = $apiKey ?? (getenv('MNFST_KEY') ?: null);
-        $base = $url ?? (getenv('MNFST_URL') ?: null) ?? self::HOSTED_URL;
+        // An empty argument is what a framework's config() yields for an unset or
+        // blanked variable (phpunit.xml's `<env name="MNFST_KEY" value=""/>`): unset.
+        $key = self::blank($apiKey) ? self::env('MNFST_KEY') : $apiKey;
+        $base = (self::blank($url) ? self::env('MNFST_URL') : $url) ?? self::HOSTED_URL;
 
         return new self($key, rtrim($base, '/'), $onHeal);
+    }
+
+    private static function blank(?string $value): bool
+    {
+        return $value === null || trim($value) === '';
+    }
+
+    /**
+     * An environment variable wherever the framework put it. Laravel and
+     * Symfony load .env files into $_ENV and $_SERVER without putenv(), so
+     * getenv() alone sees nothing of a key set the way their docs say to.
+     */
+    public static function env(string $name): ?string
+    {
+        foreach ([$_SERVER[$name] ?? null, $_ENV[$name] ?? null, getenv($name)] as $value) {
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

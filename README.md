@@ -76,7 +76,21 @@ use function Mnfst\manifest;
 manifest();  // before any HTTP call
 ```
 
-Laravel and CakePHP need no code of their own.
+Laravel and CakePHP need no code of their own for coverage: their HTTP clients
+are instrumented. In Laravel, make the call from a service provider:
+
+```php
+// app/Providers/AppServiceProvider.php
+public function register(): void
+{
+    manifest(config('services.manifest.key'), config('services.manifest.url'));
+}
+```
+
+with `'manifest' => ['key' => env('MNFST_KEY'), 'url' => env('MNFST_URL')]` in
+`config/services.php`. The SDK stays silent under PHPUnit and Pest, so
+`Http::fake()` answers are never reported as failures; `MNFST_IN_TESTS=1` opts
+back in. See [the guide](docs/guide.md#testing).
 
 ## Setup
 
@@ -119,6 +133,8 @@ Check your [Manifest dashboard](https://dashboard.manifest.build) to see all rep
 | Laravel's `Http` facade | ✅ healed |
 | Guzzle, any client, including one built inside a third-party library | ✅ healed |
 | CakePHP's `Cake\Http\Client` | ✅ healed |
+| Symfony's `HttpClient` (curl & native transports) | ✅ healed |
+| WordPress `wp_remote_*` / `WpOrg\Requests` | ✅ healed |
 | A library with its own raw `curl_*` client, such as `stripe/stripe-php` | ⚠️ **captured, never healed** |
 | `file_get_contents` | ❌ not seen |
 

@@ -19,8 +19,6 @@ final class Gate
     /** Past this a body is a payload, not a form to repair. */
     public const REQUEST_BODY_LIMIT = 262144;
 
-    private const MAX_DEPTH = 64;
-
     public static function shouldCapture(int $status): bool
     {
         return $status >= 400 && $status < 500
@@ -38,7 +36,7 @@ final class Gate
         }
 
         try {
-            return json_decode($body, true, self::MAX_DEPTH, JSON_THROW_ON_ERROR);
+            return Json::decode($body);
         } catch (\Throwable) {
             return null;
         }

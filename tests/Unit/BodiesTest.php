@@ -28,6 +28,46 @@ final class BodiesTest extends TestCase
         self::assertTrue($replayable);
     }
 
+    public function testFormKeysTravelVerbatim(): void
+    {
+        [$body] = Bodies::parseRequestBody('user.name=bob&a%20b=1&q=fight+club', Bodies::FORM);
+        self::assertSame(['user.name' => 'bob', 'a b' => '1', 'q' => 'fight club'], $body, 'parse_str would have made user_name and a_b');
+        self::assertSame('user.name=bob&a+b=1&q=fight+club', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testARepeatedFormKeyBecomesAList(): void
+    {
+        [$body] = Bodies::parseRequestBody('tag=a&tag=b&tag=c', Bodies::FORM);
+        self::assertSame(['tag' => ['a', 'b', 'c']], $body, 'parse_str kept only the last value');
+        self::assertSame('tag%5B0%5D=a&tag%5B1%5D=b&tag%5B2%5D=c', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testBracketPathsNest(): void
+    {
+        [$body] = Bodies::parseRequestBody('u[name]=x&u[roles][]=r1&u[roles][]=r2&m[3]=three', Bodies::FORM);
+        self::assertSame(['u' => ['name' => 'x', 'roles' => ['r1', 'r2']], 'm' => [3 => 'three']], $body);
+        self::assertSame(
+            'u%5Bname%5D=x&u%5Broles%5D%5B0%5D=r1&u%5Broles%5D%5B1%5D=r2&m%5B3%5D=three',
+            Bodies::encodeRequestBody($body, Bodies::FORM),
+        );
+    }
+
+    public function testAMalformedFormIsReportedButNotReplayable(): void
+    {
+        foreach (['a[]=1&a[k]=2', 'a[k]=1&a[]=2', '[x]=1', 'a[b=1', 'a]=1', 'x=%E9', 'a=1&a[b]=2'] as $raw) {
+            [$body, $replayable] = Bodies::parseRequestBody($raw, Bodies::FORM);
+            self::assertNull($body, $raw);
+            self::assertFalse($replayable, $raw);
+        }
+    }
+
+    public function testFormValuesEncodeLikeTheNodeSdk(): void
+    {
+        $encoded = Bodies::encodeRequestBody(['on' => true, 'off' => false, 'none' => null, 'n' => 1.5, 'empty' => new \stdClass()], Bodies::FORM);
+        self::assertSame('on=true&off=false&none=&n=1.5', $encoded);
+        self::assertNull(Bodies::encodeRequestBody(['x' => INF], Bodies::FORM));
+    }
+
     public function testUnparseableBytesAreReportedButNotReplayable(): void
     {
         [$body, $replayable] = Bodies::parseRequestBody("\x00\x01binary", 'application/octet-stream');

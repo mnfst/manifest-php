@@ -15,10 +15,12 @@ final class HealApiTest extends TestCase
     {
         $this->stub = new StubManifest();
         $this->stub->start();
+        @unlink($this->api()->backoffPath());
     }
 
     protected function tearDown(): void
     {
+        @unlink($this->api()->backoffPath());
         $this->stub->stop();
     }
 
@@ -35,6 +37,28 @@ final class HealApiTest extends TestCase
             'response' => ['statusCode' => 400, 'body' => ['error' => 'too big'], 'truncated' => false],
             'responseTimeMs' => 5,
         ];
+    }
+
+    public function testAnErrorBodyThatIsNotUtf8StillTravels(): void
+    {
+        $payload = $this->payload();
+        $payload['response']['body'] = "caf\xE9 non trouv\xE9";   // Latin-1, as many legacy error pages are
+
+        $this->api()->heal($payload);
+
+        $received = $this->stub->heals();
+        self::assertCount(1, $received, 'the capture must not be dropped');
+        self::assertSame("caf\u{FFFD} non trouv\u{FFFD}", $received[0]['response']['body']);
+    }
+
+    public function testNothingIsSentWithoutAKey(): void
+    {
+        $api = new HealApi(Config::resolve(null, $this->stub->url));
+
+        self::assertNull($api->heal($this->payload()));
+        $api->reportOutcome('a1', 200);
+
+        self::assertSame([], $this->stub->requests());
     }
 
     public function testHealRoundTrip(): void
@@ -83,9 +107,47 @@ final class HealApiTest extends TestCase
         self::assertFalse($api->healingEnabled());
     }
 
-    public function testAnUnreachableServerFailsSoft(): void
+    public function testTheBackoffOutlivesTheRequest(): void
+    {
+        $this->stub->setDisabled(true);
+        $this->api()->heal($this->payload());
+
+        // The next php-fpm request builds its own HealApi; it must not ask again.
+        $next = $this->api();
+        self::assertFalse($next->healingEnabled());
+        self::assertNull($next->heal($this->payload()));
+        self::assertCount(1, $this->stub->requests(), 'one refused call, then silence');
+        self::assertGreaterThan(time() + 200, filemtime($next->backoffPath()));
+    }
+
+    public function testARejectedKeyBacksOffToo(): void
+    {
+        $this->stub->setRejectKey(true);
+        $this->api()->heal($this->payload());
+
+        self::assertFalse($this->api()->healingEnabled());
+        self::assertNull($this->api()->heal($this->payload()));
+        self::assertCount(1, $this->stub->requests());
+    }
+
+    public function testAnUnreachableServerFailsSoftAndBacksOffBriefly(): void
     {
         $api = new HealApi(Config::resolve('mnfx_test', 'http://127.0.0.1:9'));
+        @unlink($api->backoffPath());
         self::assertNull($api->heal($this->payload()));
+
+        $deadline = filemtime($api->backoffPath());
+        self::assertGreaterThan(time() + 30, $deadline);
+        self::assertLessThan(time() + 120, $deadline, 'a minute, not the five of a disabled project');
+        self::assertFalse((new HealApi(Config::resolve('mnfx_test', 'http://127.0.0.1:9')))->healingEnabled());
+        @unlink($api->backoffPath());
+    }
+
+    public function testTheBackoffIsPerProjectAndServer(): void
+    {
+        $this->stub->setDisabled(true);
+        $this->api()->heal($this->payload());
+
+        self::assertTrue((new HealApi(Config::resolve('other_key', $this->stub->url)))->healingEnabled());
     }
 }

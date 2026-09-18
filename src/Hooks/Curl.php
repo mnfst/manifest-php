@@ -18,8 +18,9 @@ use function OpenTelemetry\Instrumentation\hook;
  * the dashboard while the application keeps the original error. This is a
  * permanent limit of PHP, not a temporary one.
  *
- * Because it cannot replay, this hook reports no outcome and the server should
- * never open an attempt for it.
+ * Because it cannot replay, an attempt the server opens for one of its
+ * captures is closed as not attempted; the payload carries nothing that would
+ * let the server tell a curl capture from a healable one.
  */
 final class Curl
 {
@@ -30,6 +31,9 @@ final class Curl
 
     /** @var array<int, string> the request body per curl handle, keyed by object id */
     private static array $bodies = [];
+
+    /** @var array<int, array<string, string>> the request headers per curl handle, keyed by object id */
+    private static array $headers = [];
 
     public static function install(Config $config, HealApi $api): bool
     {
@@ -49,12 +53,18 @@ final class Curl
             if (($params[1] ?? null) === CURLOPT_POSTFIELDS) {
                 self::remember($params[0] ?? null, $params[2] ?? null);
             }
+            if (($params[1] ?? null) === CURLOPT_HTTPHEADER) {
+                self::rememberHeaders($params[0] ?? null, $params[2] ?? null);
+            }
         });
 
         hook(null, 'curl_setopt_array', pre: static function (mixed $obj, array $params) {
             $options = $params[1] ?? null;
             if (is_array($options) && array_key_exists(CURLOPT_POSTFIELDS, $options)) {
                 self::remember($params[0] ?? null, $options[CURLOPT_POSTFIELDS]);
+            }
+            if (is_array($options) && array_key_exists(CURLOPT_HTTPHEADER, $options)) {
+                self::rememberHeaders($params[0] ?? null, $options[CURLOPT_HTTPHEADER]);
             }
         });
 
@@ -72,6 +82,23 @@ final class Curl
         }
     }
 
+    /** CURLOPT_HTTPHEADER is a list of `Name: value` lines; the server needs them as a map (masked on the wire). */
+    private static function rememberHeaders(mixed $handle, mixed $lines): void
+    {
+        if (!is_object($handle) || !is_array($lines)) {
+            return;
+        }
+        $headers = [];
+        foreach ($lines as $line) {
+            if (!is_string($line) || !str_contains($line, ':')) {
+                continue;
+            }
+            [$name, $value] = explode(':', $line, 2);
+            $headers[trim($name)] = trim($value);
+        }
+        self::$headers[spl_object_id($handle)] = $headers;
+    }
+
     /**
      * Guzzle and CakePHP both run on curl underneath, so without this the same
      * failure is reported twice: once by the client's own hook, which heals it,
@@ -83,8 +110,10 @@ final class Curl
     {
         foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 16) as $frame) {
             $class = $frame['class'] ?? '';
-            if (str_starts_with($class, 'GuzzleHttp\\') || str_starts_with($class, 'Cake\\Http\\Client')) {
-                return true;
+            foreach (['GuzzleHttp\\', 'Cake\\Http\\Client', 'Symfony\\Component\\HttpClient', 'WpOrg\\Requests'] as $managed) {
+                if (str_starts_with($class, $managed)) {
+                    return true;
+                }
             }
         }
 
@@ -112,22 +141,30 @@ final class Curl
                 ? Wire::cappedResponseBody($result)
                 : [null, false];
 
-            self::$deps['api']->heal(Wire::healPayload(
+            $api = self::$deps['api'];
+            $result = $api->heal(Wire::healPayload(
                 bin2hex(random_bytes(16)),
                 (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_METHOD) ?: 'GET'),
                 (string) curl_getinfo($handle, CURLINFO_EFFECTIVE_URL),
-                [],
+                self::$headers[spl_object_id($handle)] ?? [],
                 $body,
                 $status,
                 $responseBody,
                 $truncated,
                 (int) round(((float) curl_getinfo($handle, CURLINFO_TOTAL_TIME)) * 1000),
             ));
+
+            // Raw curl cannot replay. An attempt the server opened anyway
+            // must be closed, or its ledger waits for an answer that never comes.
+            $attemptId = is_array($result) ? ($result['healAttemptId'] ?? null) : null;
+            if (is_string($attemptId)) {
+                $api->reportOutcome($attemptId, null, null, HealApi::NOT_ATTEMPTED);
+            }
         } catch (\Throwable) {
             // observation must never affect the caller
         } finally {
             if (is_object($handle)) {
-                unset(self::$bodies[spl_object_id($handle)]);
+                unset(self::$bodies[spl_object_id($handle)], self::$headers[spl_object_id($handle)]);
             }
         }
     }
