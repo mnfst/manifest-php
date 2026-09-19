@@ -29,6 +29,11 @@ final class MergeTest extends TestCase
         self::assertSame(['api_key' => 'new'], Merge::healedBody(['api_key' => 'old'], [], ['api_key' => 'new']));
     }
 
+    public function testAHealedEmptyObjectStaysAnObject(): void
+    {
+        self::assertSame('{}', json_encode(Merge::healedBody(['a' => 1], ['a' => 1], [])));
+    }
+
     public function testNonObjectBodiesAreReplacedWholesale(): void
     {
         self::assertSame([1, 2], Merge::healedBody(['a' => 1], ['a' => 1], [1, 2]));

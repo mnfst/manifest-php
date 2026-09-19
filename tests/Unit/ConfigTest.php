@@ -37,6 +37,11 @@ final class ConfigTest extends TestCase
         self::assertSame('https://a.test', Config::resolve(null, 'https://a.test/')->baseUrl);
     }
 
+    public function testTheOutcomeReportTimesOutSooner(): void
+    {
+        self::assertSame(5, Config::REPORT_TIMEOUT_SECONDS);
+    }
+
     public function testHealTimeoutIsTenSeconds(): void
     {
         self::assertSame(10, Config::HEAL_TIMEOUT_SECONDS);

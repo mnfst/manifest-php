@@ -30,6 +30,10 @@ final class Gate
     /**
      * The request body as JSON — object, array or scalar — else null (absent,
      * huge, not JSON). Fails open on anything.
+     *
+     * An empty object comes back as stdClass rather than []: decoded to an
+     * array, `{}` and `[]` are the same value, and re-encoding would turn the
+     * caller's object into a list on the wire.
      */
     public static function parseJsonBody(?string $body): mixed
     {
@@ -38,9 +42,11 @@ final class Gate
         }
 
         try {
-            return json_decode($body, true, self::MAX_DEPTH, JSON_THROW_ON_ERROR);
+            $decoded = json_decode($body, true, self::MAX_DEPTH, JSON_THROW_ON_ERROR);
         } catch (\Throwable) {
             return null;
         }
+
+        return $decoded === [] && str_starts_with(ltrim($body), '{') ? new \stdClass() : $decoded;
     }
 }

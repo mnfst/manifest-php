@@ -59,6 +59,13 @@ final class CurlHookTest extends TestCase
         self::assertStringContainsString('/orders', $heals[0]['request']['url']);
     }
 
+    public function testHeadersTravelAsAJsonObjectEvenWhenNoneAreKnown(): void
+    {
+        $this->post('/orders', ['limit' => 500]);
+        [$raw] = $this->manifest->rawHeals();
+        self::assertStringContainsString('"headers":{}', $raw, 'the server rejects a JSON list where it expects a map');
+    }
+
     public function testTheRequestAndResponseBodiesTravel(): void
     {
         $this->post('/orders', ['limit' => 500]);

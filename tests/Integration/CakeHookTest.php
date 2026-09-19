@@ -69,6 +69,34 @@ final class CakeHookTest extends TestCase
         self::assertSame(200, (new Client())->get($this->upstream->url . '/ping')->getStatusCode());
     }
 
+    public function testTheRetryKeepsTheMethodAndHeaders(): void
+    {
+        $response = (new Client())->put(
+            $this->upstream->url . '/orders',
+            json_encode(['limit' => 500]),
+            ['type' => 'json', 'headers' => ['X-Auth' => 'token-1']],
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        $echo = json_decode($response->getStringBody(), true);
+        self::assertSame('PUT', $echo['method']);
+        self::assertSame('token-1', $echo['headers']['x-auth']);
+        self::assertSame(['limit' => 100], $echo['got']);
+    }
+
+    public function testAHealedQueryIsAppliedAndAGetRetriesBodyless(): void
+    {
+        $this->manifest->setResult([
+            'status' => 'patched',
+            'healAttemptId' => 'a1',
+            'healedRequest' => ['url' => $this->upstream->url . '/orders?limit=100', 'body' => null],
+        ]);
+        $response = (new Client())->get($this->upstream->url . '/orders?limit=500');
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(0, json_decode($response->getStringBody(), true)['rawLength']);
+    }
+
     public function testTheRetryIsNotItselfCaptured(): void
     {
         (new Client())->post($this->upstream->url . '/orders', json_encode(['limit' => 500]), ['type' => 'json']);

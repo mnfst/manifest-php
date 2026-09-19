@@ -48,12 +48,21 @@ other stream-based HTTP are not covered.
 - **Heal timeout: 10 seconds, not configurable.** A PHP heal runs inside a web
   request, and a web server commonly cuts the request off at 30 seconds. A
   longer heal would turn a fixable 400 into a 504.
+- **Outcome report timeout: 5 seconds.** It runs after the retry answered, still
+  inside the web request.
 - **One retry per captured failure.** The retry's response, including another
-  failure, is returned to the caller.
+  failure, is returned to the caller — thrown, if the client was configured to
+  throw on 4xx. The retry goes through the same client instance with the same
+  options, so a faked client in a test suite stays faked.
+- **No key, no traffic.** Without `MNFST_KEY` the SDK installs nothing and
+  sends nothing; `vendor/bin/manifest doctor` reports the missing key.
 - **Fail open.** Any error inside the SDK returns the caller's original
   response. A hook that throws degrades to a PHP warning.
 - **Request bodies over 256 KB are not parsed**, and response bodies travel
   capped at 64 KB.
+- **Form bodies keep their field names.** A retry re-encodes
+  `application/x-www-form-urlencoded` fields verbatim (dots, spaces, brackets)
+  and repeats a repeated name, rather than through `parse_str`, which renames them.
 - A `403` carrying `{"error":"project_disabled"}` suppresses healing for five
   minutes.
 

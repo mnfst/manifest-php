@@ -34,13 +34,14 @@ if ($current['disabled'] ?? false) {
 
 if ($path === '/v1/hello') {
     $append('hellos', is_array($body) ? $body : []);
-    echo json_encode(['project' => ['name' => 'Stub'], 'requests' => 0]);
+    echo json_encode(['status' => 'ok']);
 
     return true;
 }
 
 if ($path === '/v1/heal') {
     $append('heals', is_array($body) ? $body : []);
+    $append('heals_raw', ['raw' => $raw]);
     echo json_encode($current['result'] ?? ['status' => 'no_patch', 'issueId' => 'stub-issue']);
 
     return true;

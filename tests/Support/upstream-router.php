@@ -27,14 +27,24 @@ $in = json_decode($raw, true);
 if (!is_array($in)) {
     parse_str($raw, $in);
 }
+$headers = array_change_key_case(getallheaders(), CASE_LOWER);
 
-if ((int) ($in['limit'] ?? 0) > 100) {
+// The limit may arrive in the body, the query string or the X-Limit header,
+// so a heal can move it to any of the three places an operation can address.
+$limit = $in['limit'] ?? $_GET['limit'] ?? $headers['x-limit'] ?? 0;
+if ((int) $limit > 100) {
     http_response_code(400);
     echo json_encode(['error' => 'limit must be at most 100, too big']);
 
     return true;
 }
 
-echo json_encode(['ok' => true, 'got' => $in]);
+echo json_encode([
+    'ok' => true,
+    'got' => $in,
+    'method' => $_SERVER['REQUEST_METHOD'],
+    'headers' => $headers,
+    'rawLength' => strlen($raw),
+]);
 
 return true;
