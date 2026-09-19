@@ -12,10 +12,13 @@ namespace Mnfst;
  * the recurrence would be recorded as evidence against the patch.
  *
  * Rules, shared with the Node SDK: a healed URL is honoured only within the
- * original origin and never with credentials; a healed header sets or, when
- * null, removes; the SDK's own mask value never goes back on the wire; the
- * body merges through Merge; a body that merges to nothing retries bodyless
- * on GET, HEAD, DELETE and OPTIONS and is not retried on any other method.
+ * original origin and never with userinfo; the query credentials the SDK
+ * masked on the wire (and the server therefore dropped or echoed as the mask)
+ * are restored from the original URL unless the healed URL carries a real
+ * value for them; a healed header sets or, when null, removes; the SDK's own
+ * mask value never goes back on the wire; the body merges through Merge; a
+ * body that merges to nothing retries bodyless on GET, HEAD, DELETE and
+ * OPTIONS and is not retried on any other method.
  */
 final class Replay
 {
@@ -64,7 +67,10 @@ final class Replay
         return $encoded === null ? null : ['url' => $target, 'headers' => $headers, 'body' => $encoded];
     }
 
-    /** The healed URL when it stays on the original origin and carries no userinfo. */
+    /**
+     * The healed URL when it stays on the original origin and carries no
+     * userinfo, with the caller's own query credentials put back.
+     */
     private static function url(string $original, mixed $healed): ?string
     {
         if ($healed === null) {
@@ -84,7 +90,41 @@ final class Replay
             }
         }
 
-        return $healed;
+        $query = self::restoredQuery(
+            Bodies::parseForm($from['query'] ?? ''),
+            Bodies::parseForm($to['query'] ?? ''),
+        );
+        $encoded = $query === [] ? null : Bodies::encodeForm($query);
+        if ($query !== [] && $encoded === null) {
+            return null;
+        }
+        $scheme = isset($to['scheme']) ? $to['scheme'] . '://' : '';
+        $port = isset($to['port']) ? ':' . $to['port'] : '';
+
+        return $scheme . ($to['host'] ?? '') . $port . ($to['path'] ?? '') . ($encoded === null ? '' : '?' . $encoded);
+    }
+
+    /**
+     * The healed query decides every parameter it names with a real value. A
+     * credential-named parameter it omits, or echoes as the mask, comes back
+     * from the original; a mask with nothing to restore is dropped.
+     */
+    private static function restoredQuery(array $original, array $healed): array
+    {
+        foreach ($original as $name => $value) {
+            $served = $healed[$name] ?? null;
+            $needsRestore = $served === null || self::isMasked($served);
+            if ($needsRestore && Wire::isSecretHeader((string) $name)) {
+                $healed[$name] = $value;
+            }
+        }
+
+        return array_filter($healed, static fn (mixed $value): bool => !self::isMasked($value));
+    }
+
+    private static function isMasked(mixed $value): bool
+    {
+        return $value === self::MASK || (is_array($value) && in_array(self::MASK, $value, true));
     }
 
     /** @return array<string, ?string>|null set (string) or remove (null) per name; null when malformed */

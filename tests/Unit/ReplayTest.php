@@ -30,6 +30,22 @@ final class ReplayTest extends TestCase
         self::assertSame('{"limit":500}', $plan['body'], 'no body key means the original body is kept');
     }
 
+    public function testRestoresTheQueryCredentialsTheServerNeverSaw(): void
+    {
+        // The SDK masked ?key= on the wire and the server drops credentials from
+        // the URL it serves, so the retry must put the caller's own key back.
+        $original = 'https://a.test/orders?key=AIza-live&limit=500&session=s1';
+        $plan = Replay::plan('GET', $original, null, true, '', self::served(['url' => 'https://a.test/orders?limit=100&session=REDACTED']));
+        self::assertSame('https://a.test/orders?limit=100&session=s1&key=AIza-live', $plan['url']);
+    }
+
+    public function testAHealedCredentialValueWins(): void
+    {
+        $original = 'https://a.test/orders?key=old';
+        $plan = Replay::plan('GET', $original, null, true, '', self::served(['url' => 'https://a.test/orders?key=new']));
+        self::assertSame('https://a.test/orders?key=new', $plan['url']);
+    }
+
     public function testRefusesAHealedUrlOnAnotherOrigin(): void
     {
         self::assertNull(Replay::plan('POST', self::URL, ['limit' => 500], true, Bodies::JSON, self::served(['url' => 'https://evil.test/orders'])));
