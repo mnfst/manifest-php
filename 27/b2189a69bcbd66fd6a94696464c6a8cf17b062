@@ -1,0 +1,19 @@
+src/Manifest.php
+  s_18608139a74245::t_f0dbf5c9819c0f 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "27b2189a69bcbd66fd6a94696464c6a8cf17b062",
+  "prompts": {},
+  "sessions": {
+    "s_18608139a74245": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8507883f-dfaf-424a-a038-9a2d0e3c21d7",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
