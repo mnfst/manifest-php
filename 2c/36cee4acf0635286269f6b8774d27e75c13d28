@@ -1,0 +1,79 @@
+CONTRACT.md
+  s_18608139a74245::t_015a5e376b9032 10,13,30,36,38,60,62
+composer.json
+  s_18608139a74245::t_52f8ee1d914275 10-12
+docs/guide.md
+  s_18608139a74245::t_24be9c3a0eada3 51-52,54-58,63-65
+scripts/wire-fixtures.php
+  s_18608139a74245::t_82e11d7f245f76 1-61
+src/Bodies.php
+  s_18608139a74245::t_f76df34839be09 44,50-101,109
+src/Config.php
+  s_18608139a74245::t_ba0a6a9c00a6cc 26-32
+src/Doctor.php
+  s_18608139a74245::t_e9ffbd43d3d752 28,76,86-92,102
+src/Gate.php
+  s_18608139a74245::t_4fa9ba535d644e 33-36,45,49-50
+src/Handshake.php
+  s_18608139a74245::t_9ea864a9fb3d6f 34,56-60
+src/HealApi.php
+  s_18608139a74245::t_f0c6b8314c9d3a 8-9,19-21,51,82-92,94-113,115-120,126-130,157
+src/Hooks/Cake.php
+  s_18608139a74245::t_55ddf5a4e0ce8e 7-8,13,27-30,54,58,63,70,93-94,96-100,105-113,118-119,128-129,131-149,151-152
+src/Hooks/Guzzle.php
+  s_18608139a74245::t_f5a4aa6230f8e6 7,10,16,20,36-41,45-52,78,82,93-94,98-101,103-107,116-127,135-136,149-156,161-169,174-175,178-182,184-194,196-201,203-204,206-210,212,214-215,218-219,221-223,225-226
+src/Manifest.php
+  s_18608139a74245::t_fb46583d1203ff 25-27,30-31,33-38
+src/Merge.php
+  s_18608139a74245::t_ed3bcb93d8557b 14-17,23,36
+src/Replay.php
+  s_18608139a74245::t_3935ea98dc6fb9 1-111
+src/Wire.php
+  s_18608139a74245::t_bb62fa26587411 159-160
+tests/Integration/CakeHookTest.php
+  s_18608139a74245::t_7d2101a47c6605 72-99
+tests/Integration/CurlHookTest.php
+  s_18608139a74245::t_80979808df0f5a 62-68
+tests/Integration/DoctorTest.php
+  s_18608139a74245::t_1132c5a602baff 34,38-45,64-65
+tests/Integration/GuzzleHookTest.php
+  s_18608139a74245::t_885f18d245df81 6-11,110-201
+tests/Integration/HandshakeTest.php
+  s_18608139a74245::t_6ac1470a095fc1 48-60
+tests/Integration/HealApiTest.php
+  s_18608139a74245::t_7cab8e83515b76 59,65,67-74,79,84-110
+tests/Integration/ManifestTest.php
+  s_18608139a74245::t_69408d1087cbff 1-42
+tests/Support/StubManifest.php
+  s_18608139a74245::t_ade85328356b45 67-72,88
+tests/Support/stub-router.php
+  s_18608139a74245::t_a9bd9483c5e2fd 37,44
+tests/Support/upstream-router.php
+  s_18608139a74245::t_aceb0d5be0df95 30,32-35,42-48
+tests/Unit/BodiesTest.php
+  s_18608139a74245::t_fa722fc175805d 50,52-74
+tests/Unit/ConfigTest.php
+  s_18608139a74245::t_1653e035403d3d 40-44
+tests/Unit/MergeTest.php
+  s_18608139a74245::t_841a725dc9b374 32-36
+tests/Unit/ReplayTest.php
+  s_18608139a74245::t_417874f3c70658 1-91
+tests/Unit/WireTest.php
+  s_18608139a74245::t_26a7e5676a2eb6 5,60-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2c36cee4acf0635286269f6b8774d27e75c13d28",
+  "prompts": {},
+  "sessions": {
+    "s_18608139a74245": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8507883f-dfaf-424a-a038-9a2d0e3c21d7",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
