@@ -4,17 +4,20 @@ namespace Mnfst\Hooks;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
+use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\Utils;
 use Mnfst\Bodies;
 use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
-use Mnfst\Merge;
+use Mnfst\Replay;
 use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamInterface;
 
 use function OpenTelemetry\Instrumentation\hook;
 
@@ -30,9 +33,23 @@ use function OpenTelemetry\Instrumentation\hook;
  *  3. it handles the rejection path, since http_errors rejects on 4xx
  *  4. it skips the SDK's own calls
  *  6. it must tolerate running before or after another hook on this method
+ *
+ * The retry goes back through the SAME client with the caller's own options,
+ * so it keeps the handler stack (Laravel's Http::fake, mocks, middleware),
+ * proxy, TLS and timeout settings the original call had. A retry through a
+ * fresh client would leave a test suite's faked 4xx retrying on the real
+ * network.
  */
 final class Guzzle
 {
+    /**
+     * Options the retry must not repeat: the ones that describe the original
+     * body, headers or URL (the retry request already carries the healed
+     * ones), and `handler`, which the client's own config supplies and which
+     * Guzzle refuses as a per-request option.
+     */
+    private const REQUEST_SHAPING_OPTIONS = ['json', 'form_params', 'multipart', 'body', 'query', 'headers', 'synchronous', 'handler'];
+
     private static bool $installed = false;
 
     /** @var array{config: Config, api: HealApi}|null */
@@ -58,10 +75,11 @@ final class Guzzle
             Client::class,
             'transfer',
             post: static function (mixed $client, array $params, mixed $promise, ?\Throwable $exception): mixed {
-                if (!$promise instanceof PromiseInterface) {
+                if (!$promise instanceof PromiseInterface || !$client instanceof Client) {
                     return $promise;   // rule 2: never null
                 }
                 $request = $params[0] ?? null;
+                $options = is_array($params[1] ?? null) ? $params[1] : [];
                 if (!$request instanceof RequestInterface || HealApi::isInternalCall()) {
                     return $promise;
                 }
@@ -72,14 +90,21 @@ final class Guzzle
 
                 return $promise->then(
                     static fn (ResponseInterface $response): ResponseInterface
-                        => self::attempt($request, $response, $started) ?? $response,
-                    static function (mixed $reason) use ($request, $started): mixed {
+                        => self::attempt($client, $options, $request, $response, $started)['response'] ?? $response,
+                    static function (mixed $reason) use ($client, $options, $request, $started): mixed {
                         if (!$reason instanceof BadResponseException) {
                             return Create::rejectionFor($reason);
                         }
+                        $retried = self::attempt($client, $options, $request, $reason->getResponse(), $started);
+                        if ($retried === null) {
+                            return Create::rejectionFor($reason);
+                        }
 
-                        return self::attempt($request, $reason->getResponse(), $started)
-                            ?? Create::rejectionFor($reason);
+                        // The caller asked for exceptions on a 4xx (http_errors), so a
+                        // retry that fails again rejects the same way, naming the retry.
+                        return $retried['response']->getStatusCode() >= 400
+                            ? Create::rejectionFor(RequestException::create($retried['request'], $retried['response']))
+                            : $retried['response'];
                     },
                 );
             },
@@ -88,9 +113,18 @@ final class Guzzle
         return true;
     }
 
-    /** One capture: heal, apply, retry once, report. Null means "no change". */
-    private static function attempt(RequestInterface $request, ResponseInterface $response, float $started): ?ResponseInterface
-    {
+    /**
+     * One capture: heal, apply, retry once, report. Null means "no change".
+     *
+     * @return array{request: RequestInterface, response: ResponseInterface}|null
+     */
+    private static function attempt(
+        Client $client,
+        array $options,
+        RequestInterface $request,
+        ResponseInterface $response,
+        float $started,
+    ): ?array {
         try {
             if (self::$deps === null || !Gate::shouldCapture($response->getStatusCode())) {
                 return null;
@@ -98,8 +132,8 @@ final class Guzzle
             $api = self::$deps['api'];
 
             $contentType = Bodies::contentTypeOf($request->getHeaders());
-            [$body, $replayable] = Bodies::parseRequestBody((string) $request->getBody(), $contentType);
-            [$responseBody, $truncated] = Wire::cappedResponseBody((string) $response->getBody());
+            [$body, $replayable] = Bodies::parseRequestBody(self::text($request->getBody()), $contentType);
+            [$responseBody, $truncated] = Wire::cappedResponseBody(self::text($response->getBody()));
 
             $result = $api->heal(Wire::healPayload(
                 bin2hex(random_bytes(16)),
@@ -112,58 +146,83 @@ final class Guzzle
                 $truncated,
                 (int) round((microtime(true) - $started) * 1000),
             ));
+            $attemptId = is_array($result) ? ($result['healAttemptId'] ?? null) : null;
+            $attemptId = is_string($attemptId) ? $attemptId : null;
 
-            if (!is_array($result)) {
-                return null;
-            }
-
-            $attemptId = $result['healAttemptId'] ?? null;
-            $healedRequest = $result['healedRequest'] ?? null;
-
-            if (!in_array($result['status'] ?? null, ['patched', 'unverified'], true) || !is_array($healedRequest)) {
-                return null;
-            }
-
-            if (!$replayable || !array_key_exists('body', $healedRequest)) {
-                self::abandon($api, $attemptId);
+            $plan = Replay::plan($request->getMethod(), (string) $request->getUri(), $body, $replayable, $contentType, $result);
+            if ($plan === null) {
+                if ($attemptId !== null) {
+                    $api->reportFailure($attemptId, 'not_attempted', HealApi::NOT_ATTEMPTED);
+                }
 
                 return null;
             }
 
-            $merged = Merge::healedBody($body, Wire::travelingBody($body), $healedRequest['body']);
-            $encoded = Bodies::encodeRequestBody($merged, $contentType);
-            if ($encoded === null) {
-                self::abandon($api, $attemptId);
+            $retry = self::retryRequest($request, $plan);
+            try {
+                $replayed = HealApi::withInternalCall(
+                    static fn (): ResponseInterface => $client->send($retry, self::retryOptions($options)),
+                );
+            } catch (\Throwable $e) {
+                if ($attemptId !== null) {
+                    $api->reportFailure($attemptId, 'transport_error', $e->getMessage());
+                }
 
                 return null;
             }
 
-            $retry = $request
-                ->withBody(Utils::streamFor($encoded))
-                ->withHeader('Content-Length', (string) strlen($encoded));
-
-            $replayed = HealApi::withInternalCall(
-                static fn (): ResponseInterface => (new Client(['http_errors' => false]))
-                    ->send($retry, ['http_errors' => false]),
-            );
-
-            if (is_string($attemptId)) {
-                $status = $replayed->getStatusCode();
-                $failedBody = $status >= 400 ? Wire::cappedResponseBody((string) $replayed->getBody())[0] : null;
-                $api->reportOutcome($attemptId, $status, is_array($failedBody) ? $failedBody : null);
+            if ($attemptId !== null) {
+                self::report($api, $attemptId, $replayed);
             }
 
-            return $replayed;
+            return ['request' => $retry, 'response' => $replayed];
         } catch (\Throwable) {
             return null;   // rule 5: fail open
         }
     }
 
-    /** Close an attempt we opened but could not replay. */
-    private static function abandon(HealApi $api, mixed $attemptId): void
+    /** @param array{url: string, headers: array<string, ?string>, body: ?string} $plan */
+    private static function retryRequest(RequestInterface $request, array $plan): RequestInterface
     {
-        if (is_string($attemptId)) {
-            $api->reportOutcome($attemptId, null, null, HealApi::NOT_ATTEMPTED);
+        $retry = $request->withUri(new Uri($plan['url']))->withoutHeader('Content-Length');
+        foreach ($plan['headers'] as $name => $value) {
+            $retry = $value === null ? $retry->withoutHeader($name) : $retry->withHeader($name, $value);
         }
+        $retry = $retry->withBody(Utils::streamFor($plan['body'] ?? ''));
+
+        return $plan['body'] === null ? $retry : $retry->withHeader('Content-Length', (string) strlen($plan['body']));
+    }
+
+    private static function retryOptions(array $options): array
+    {
+        foreach (self::REQUEST_SHAPING_OPTIONS as $name) {
+            unset($options[$name]);
+        }
+        $options['http_errors'] = false;
+
+        return $options;
+    }
+
+    private static function report(HealApi $api, string $attemptId, ResponseInterface $replayed): void
+    {
+        $status = $replayed->getStatusCode();
+        if ($status < 400) {
+            $api->reportResponse($attemptId, $status);
+
+            return;
+        }
+        [$body, $truncated] = Wire::cappedResponseBody(self::text($replayed->getBody()));
+        $api->reportResponse($attemptId, $status, $body, $truncated);
+    }
+
+    /** Read a stream without leaving it drained for whoever reads it next. */
+    private static function text(StreamInterface $stream): string
+    {
+        $text = (string) $stream;
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+
+        return $text;
     }
 }

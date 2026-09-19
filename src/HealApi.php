@@ -5,6 +5,8 @@ namespace Mnfst;
 /**
  * The SDK's own calls to Manifest. Everything here fails soft: a heal that
  * cannot complete returns null and the caller serves the original response.
+ * Without a project key nothing is sent at all — an unkeyed call could only
+ * be refused, and it would carry a captured request off the host for nothing.
  */
 final class HealApi
 {
@@ -13,6 +15,9 @@ final class HealApi
      * attempt ledger closes instead of holding open an answer that never comes.
      */
     public const NOT_ATTEMPTED = 'replay_not_attempted';
+
+    /** The server's cap on a failure message, in UTF-8 bytes. */
+    public const FAILURE_MESSAGE_CAP = 512;
 
     private const DISABLED_BACKOFF_SECONDS = 300;
     private const MAX_HEAL_RESPONSE = 1048576;
@@ -43,7 +48,7 @@ final class HealApi
 
     public function healingEnabled(): bool
     {
-        return microtime(true) >= $this->disabledUntil;
+        return $this->config->apiKey !== null && microtime(true) >= $this->disabledUntil;
     }
 
     public function heal(array $payload): ?array
@@ -74,36 +79,55 @@ final class HealApi
         return is_array($decoded) ? $decoded : null;
     }
 
-    public function reportOutcome(
-        string $healAttemptId,
-        ?int $retryStatusCode,
-        ?array $retryBody = null,
-        ?string $error = null,
-    ): void {
-        if ($error !== null) {
-            $body = ['failure' => [
-                'kind' => $error === self::NOT_ATTEMPTED ? 'not_attempted' : 'transport_error',
-                'message' => $error,
-            ]];
-        } else {
-            $response = ['statusCode' => $retryStatusCode];
-            if ($retryBody !== null) {
-                $response['body'] = $retryBody;
-                $response['truncated'] = false;
-            }
-            $body = ['response' => $response];
+    /**
+     * The retry got an HTTP answer. A failure carries its raw body so the
+     * server can tell a recurrence from a newly revealed issue; a success
+     * carries the status alone.
+     */
+    public function reportResponse(string $healAttemptId, int $statusCode, mixed $body = null, bool $truncated = false): void
+    {
+        $response = ['statusCode' => $statusCode];
+        if ($body !== null) {
+            $response['body'] = $body;
+            $response['truncated'] = $truncated;
         }
+        $this->report($healAttemptId, ['response' => $response]);
+    }
 
-        $this->send('PATCH', '/v1/heal-attempts/' . rawurlencode($healAttemptId), $body, Config::HEAL_TIMEOUT_SECONDS);
+    /** The retry got no HTTP answer, or was never sent. Inconclusive evidence either way. */
+    public function reportFailure(string $healAttemptId, string $kind, string $message): void
+    {
+        $this->report($healAttemptId, ['failure' => ['kind' => $kind, 'message' => self::safeMessage($message)]]);
+    }
+
+    /** Masked like a URL on the wire, then cut at the cap without splitting a character. */
+    public static function safeMessage(string $message): string
+    {
+        $masked = preg_replace_callback(
+            '~https?://[^\s"\'()<>]+~i',
+            static fn (array $m): string => Wire::safeUrl($m[0]),
+            $message,
+        ) ?? $message;
+
+        return mb_strcut($masked, 0, self::FAILURE_MESSAGE_CAP, 'UTF-8');
+    }
+
+    private function report(string $healAttemptId, array $body): void
+    {
+        if ($this->config->apiKey === null) {
+            return;
+        }
+        $this->send('PATCH', '/v1/heal-attempts/' . rawurlencode($healAttemptId), $body, Config::REPORT_TIMEOUT_SECONDS);
     }
 
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
     private function send(string $method, string $path, array $body, int $timeout): ?array
     {
-        $headers = ['Content-Type: application/json', 'User-Agent: mnfst-php/' . Manifest::VERSION];
-        if ($this->config->apiKey !== null) {
-            $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
-        }
+        $headers = [
+            'Content-Type: application/json',
+            'User-Agent: mnfst-php/' . Manifest::VERSION,
+            'Authorization: Bearer ' . $this->config->apiKey,
+        ];
 
         return self::withInternalCall(function () use ($method, $path, $body, $timeout, $headers): ?array {
             $ch = curl_init($this->config->baseUrl . $path);
@@ -130,7 +154,6 @@ final class HealApi
     {
         $body = json_decode($raw, true);
 
-        return is_array($body)
-            && (($body['error'] ?? null) === 'project_disabled' || ($body['status'] ?? null) === 'app_disabled');
+        return is_array($body) && ($body['error'] ?? null) === 'project_disabled';
     }
 }

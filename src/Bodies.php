@@ -41,12 +41,62 @@ final class Bodies
         }
 
         if ($contentType === self::FORM) {
-            parse_str($raw, $pairs);
-
-            return [$pairs, true];
+            return [self::parseForm($raw), true];
         }
 
         return [null, false];
+    }
+
+    /**
+     * Not parse_str: it rewrites dots and spaces in names to underscores and
+     * reinterprets brackets, so a replay would rename the caller's fields. A
+     * name is kept verbatim; a repeated name becomes a list.
+     */
+    public static function parseForm(string $raw): array
+    {
+        $out = [];
+        foreach (explode('&', $raw) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+            [$name, $value] = array_pad(explode('=', $pair, 2), 2, '');
+            $name = urldecode($name);
+            $value = urldecode($value);
+            if (!array_key_exists($name, $out)) {
+                $out[$name] = $value;
+            } elseif (is_array($out[$name])) {
+                $out[$name][] = $value;
+            } else {
+                $out[$name] = [$out[$name], $value];
+            }
+        }
+
+        return $out;
+    }
+
+    /** The inverse of parseForm; null when a value cannot be expressed as a form field. */
+    public static function encodeForm(array $body): ?string
+    {
+        $pairs = [];
+        foreach ($body as $name => $value) {
+            foreach (is_array($value) && array_is_list($value) ? $value : [$value] as $item) {
+                if (is_array($item) || is_object($item)) {
+                    return null;
+                }
+                $pairs[] = urlencode((string) $name) . '=' . urlencode(self::scalarText($item));
+            }
+        }
+
+        return implode('&', $pairs);
+    }
+
+    private static function scalarText(mixed $value): string
+    {
+        return match (true) {
+            $value === null => '',
+            is_bool($value) => $value ? '1' : '0',
+            default => (string) $value,
+        };
     }
 
     public static function encodeRequestBody(mixed $body, string $contentType): ?string
@@ -56,7 +106,7 @@ final class Bodies
                 return null;
             }
 
-            return http_build_query($body);
+            return self::encodeForm($body);
         }
 
         try {

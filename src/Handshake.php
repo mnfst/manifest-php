@@ -31,7 +31,7 @@ final class Handshake
     public function announce(): void
     {
         try {
-            if ($this->isFresh()) {
+            if ($this->config->apiKey === null || $this->isFresh()) {
                 return;
             }
             @touch($this->markerPath());
@@ -53,10 +53,11 @@ final class Handshake
 
     private function send(): void
     {
-        $headers = ['Content-Type: application/json', 'User-Agent: mnfst-php/' . Manifest::VERSION];
-        if ($this->config->apiKey !== null) {
-            $headers[] = 'Authorization: Bearer ' . $this->config->apiKey;
-        }
+        $headers = [
+            'Content-Type: application/json',
+            'User-Agent: mnfst-php/' . Manifest::VERSION,
+            'Authorization: Bearer ' . $this->config->apiKey,
+        ];
 
         HealApi::withInternalCall(function () use ($headers): void {
             $ch = curl_init($this->config->baseUrl . '/v1/hello');

@@ -64,6 +64,12 @@ class StubManifest
         return $this->readLog('heals');
     }
 
+    /** @return array<int, string> the heal payloads as the bytes they arrived in */
+    public function rawHeals(): array
+    {
+        return array_column($this->readLog('heals_raw'), 'raw');
+    }
+
     /** @return array<int, array> the handshake bodies received, oldest first */
     public function hellos(): array
     {
@@ -79,7 +85,7 @@ class StubManifest
     public function stop(): void
     {
         $this->terminate();
-        foreach (['state', 'heals', 'hellos', 'outcomes'] as $suffix) {
+        foreach (['state', 'heals', 'heals_raw', 'hellos', 'outcomes'] as $suffix) {
             @unlink($this->stateFile . '.' . $suffix);
         }
     }

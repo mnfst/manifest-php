@@ -23,6 +23,13 @@ final class Config
 
     public const HELLO_TIMEOUT_SECONDS = 5;
 
+    /**
+     * The outcome report runs after the retry already answered, still inside
+     * the web request, so it gets the Node SDK's 5 seconds rather than the
+     * heal's 10: it is evidence for the dashboard, not the user's response.
+     */
+    public const REPORT_TIMEOUT_SECONDS = 5;
+
     public function __construct(
         public readonly ?string $apiKey,
         public readonly string $baseUrl,

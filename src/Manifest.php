@@ -22,13 +22,20 @@ final class Manifest
         self::$started = true;
 
         $config = Config::resolve($apiKey, $url, $onHeal);
+        if ($config->apiKey === null) {
+            return;   // inert without a key; `manifest doctor` says so
+        }
         $api = new HealApi($config);
 
-        Guzzle::install($config, $api);
-        Cake::install($config, $api);
-        Curl::install($config, $api);
+        // Every hook, not a short-circuit: each must get its chance to install.
+        $installed = [Guzzle::install($config, $api), Cake::install($config, $api), Curl::install($config, $api)];
 
-        (new Handshake($config))->announce();
+        // Announce only what is real: without the extension nothing is
+        // instrumented, and a handshake would make the dashboard show an app
+        // as connected that can never report a failure.
+        if (in_array(true, $installed, true)) {
+            (new Handshake($config))->announce();
+        }
     }
 
     /** True when the opentelemetry extension is present, so full coverage is active. */

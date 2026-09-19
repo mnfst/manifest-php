@@ -47,9 +47,31 @@ final class BodiesTest extends TestCase
         self::assertSame('{"limit":100}', Bodies::encodeRequestBody(['limit' => 100], 'application/json'));
     }
 
-    public function testEncodesFormUrlencodedWithIndexedRepeatedKeys(): void
+    public function testRepeatedFormKeysSurviveTheRoundTrip(): void
     {
-        self::assertSame('tag%5B0%5D=a&tag%5B1%5D=b', Bodies::encodeRequestBody(['tag' => ['a', 'b']], 'application/x-www-form-urlencoded'));
+        [$body] = Bodies::parseRequestBody('tag=a&tag=b', Bodies::FORM);
+        self::assertSame(['tag' => ['a', 'b']], $body);
+        self::assertSame('tag=a&tag=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testBracketedFormKeysAreNotReinterpreted(): void
+    {
+        [$body] = Bodies::parseRequestBody('tag%5B%5D=a&tag%5B%5D=b', Bodies::FORM);
+        self::assertSame(['tag[]' => ['a', 'b']], $body);
+        self::assertSame('tag%5B%5D=a&tag%5B%5D=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testFormKeysWithDotsAndSpacesSurviveTheRoundTrip(): void
+    {
+        [$body] = Bodies::parseRequestBody('first.name=a&user+id=b', Bodies::FORM);
+        self::assertSame(['first.name' => 'a', 'user id' => 'b'], $body);
+        self::assertSame('first.name=a&user+id=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testAnEmptyJsonObjectEncodesAsAnObject(): void
+    {
+        [$body] = Bodies::parseRequestBody('{}', Bodies::JSON);
+        self::assertSame('{}', Bodies::encodeRequestBody($body, Bodies::JSON));
     }
 
     public function testANonObjectBodyIsNotEncodableAsAForm(): void
