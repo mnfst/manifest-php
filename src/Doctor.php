@@ -25,7 +25,7 @@ final class Doctor
         if (Manifest::hasFullCoverage()) {
             self::line('  coverage  full coverage — every HTTP client is instrumented');
         } else {
-            self::line('  coverage  framework-only — the opentelemetry extension is not installed');
+            self::line('  coverage  none — the opentelemetry extension is not installed, so nothing is instrumented');
             self::line('            add it with: pecl install opentelemetry');
             $failures++;
         }
@@ -73,28 +73,7 @@ final class Doctor
             return 1;
         }
 
-        if ($hello === null) {
-            self::line('  server    answered 200 with an unreadable body');
-
-            return 1;
-        }
-
-        $name = $hello['project']['name']
-            ?? $hello['projectName']
-            ?? $hello['project_name']
-            ?? $hello['name']
-            ?? null;
-        if (is_string($name)) {
-            self::line('  project   ' . $name);
-        }
-
-        $requests = $hello['requests'] ?? $hello['requestCount'] ?? $hello['request_count'] ?? null;
-        if (is_array($requests)) {
-            $requests = $requests['total'] ?? null;
-        }
-        if ($requests === 0) {
-            self::line('  traffic   no request has arrived yet');
-        }
+        self::line('  server    accepted the key at ' . $config->baseUrl);
 
         return 0;
     }
@@ -104,7 +83,13 @@ final class Doctor
         return strlen($key) <= 8 ? '****' : substr($key, 0, 4) . str_repeat('*', 8) . substr($key, -2);
     }
 
-    /** @return array{0: int, 1: array|null}|null status and body, or null if unreachable */
+    /**
+     * A key check, not an install: `probe` tells the server to answer without
+     * recording a handshake, so a run from a laptop cannot mark the app as
+     * connected.
+     *
+     * @return array{0: int, 1: array|null}|null status and body, or null if unreachable
+     */
     private static function hello(Config $config): ?array
     {
         $ch = curl_init($config->baseUrl . '/v1/hello');
@@ -114,7 +99,7 @@ final class Doctor
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode(['runtime' => 'php-' . PHP_VERSION]),
+            CURLOPT_POSTFIELDS => json_encode(['runtime' => 'php-' . PHP_VERSION, 'probe' => true]),
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 'User-Agent: mnfst-php/' . Manifest::VERSION,

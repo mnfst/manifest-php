@@ -36,14 +36,19 @@ if ($current['disabled'] ?? false) {
 
 if ($path === '/v1/hello') {
     $append('hellos', is_array($body) ? $body : []);
-    echo json_encode(['project' => ['name' => 'Stub'], 'requests' => 0]);
+    echo json_encode(['status' => 'ok']);
 
     return true;
 }
 
 if ($path === '/v1/heal') {
     $append('heals', is_array($body) ? $body : []);
-    echo $current['result'] ?? json_encode(['status' => 'no_patch', 'issueId' => 'stub-issue']);
+    $append('heals_raw', ['raw' => $raw]);
+    // setResult() may store the answer as a raw JSON string so `{}` and `10.0`
+    // reach the SDK exactly as written; anything else is encoded here.
+    echo is_string($current['result'] ?? null)
+        ? $current['result']
+        : json_encode($current['result'] ?? ['status' => 'no_patch', 'issueId' => 'stub-issue']);
 
     return true;
 }

@@ -31,11 +31,18 @@ final class DoctorTest extends TestCase
         return [$code, (string) ob_get_clean()];
     }
 
-    public function testReportsAValidKeyAndTheProjectName(): void
+    public function testReportsAValidKey(): void
     {
         [$code, $output] = $this->doctor('mnfx_valid');
         self::assertSame(0, $code);
-        self::assertStringContainsString('Stub', $output);
+        self::assertStringContainsString('accepted the key', $output);
+    }
+
+    public function testChecksTheKeyWithAProbeNotAnInstall(): void
+    {
+        $this->doctor('mnfx_valid');
+        [$hello] = $this->stub->hellos();
+        self::assertTrue($hello['probe'] ?? false, 'a laptop run must not mark the app as connected');
     }
 
     public function testMasksTheKey(): void
@@ -54,7 +61,8 @@ final class DoctorTest extends TestCase
     public function testReportsTheCoverageLevel(): void
     {
         [, $output] = $this->doctor('mnfx_valid');
-        self::assertMatchesRegularExpression('/full coverage|framework-only/', $output);
+        self::assertMatchesRegularExpression('/full coverage|nothing is instrumented/', $output);
+        self::assertStringNotContainsString('framework-only', $output);
         self::assertStringNotContainsString('Mode A', $output);
         self::assertStringNotContainsString('Mode B', $output);
     }

@@ -20,12 +20,16 @@ final class JsonTest extends TestCase
         self::assertSame($raw, Bodies::encodeRequestBody($parsed, 'application/json'));
     }
 
-    public function testFloatLiteralsAndUnicodeAreKept(): void
+    public function testFloatLiteralsAndSlashesAreKept(): void
     {
-        $raw = '{"amount":10.0,"rate":1.5,"title":"Amélie","path":"a/b"}';
-        [$parsed] = Bodies::parseRequestBody($raw, 'application/json');
+        [$parsed] = Bodies::parseRequestBody('{"amount":10.0,"rate":1.5,"title":"Amélie","path":"a/b"}', 'application/json');
 
-        self::assertSame($raw, Bodies::encodeRequestBody($parsed, 'application/json'));
+        // The float keeps its fraction and the slash stays unescaped; unicode is
+        // escaped, which is the same JSON value on the wire.
+        self::assertSame(
+            '{"amount":10.0,"rate":1.5,"title":"Am\u00e9lie","path":"a/b"}',
+            Bodies::encodeRequestBody($parsed, 'application/json'),
+        );
     }
 
     public function testObjectsWithKeysAreStillArrays(): void

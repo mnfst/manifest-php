@@ -5,6 +5,8 @@ namespace Mnfst;
 /**
  * The SDK's own calls to Manifest. Everything here fails soft: a heal that
  * cannot complete returns null and the caller serves the original response.
+ * Without a project key nothing is sent at all — an unkeyed call could only
+ * be refused, and it would carry a captured request off the host for nothing.
  */
 final class HealApi
 {
@@ -14,32 +16,20 @@ final class HealApi
      */
     public const NOT_ATTEMPTED = 'replay_not_attempted';
 
+    /** The server's cap on a failure message, in UTF-8 bytes. */
+    public const FAILURE_MESSAGE_CAP = 512;
+
     /** A disabled project or a rejected key: nothing will change for a while. */
     private const DISABLED_BACKOFF_SECONDS = 300;
 
     /** A server that timed out, failed or could not be reached: try again soon, not on the very next failure. */
     private const UNREACHABLE_BACKOFF_SECONDS = 60;
-
     private const MAX_HEAL_RESPONSE = 1048576;
 
     private static bool $internalCall = false;
 
     public function __construct(private readonly Config $config)
     {
-    }
-
-    /**
-     * PHP keeps nothing between requests, so the backoff lives in a marker
-     * file whose mtime is the deadline (like the handshake marker). Without
-     * it every php-fpm worker would learn the project is disabled on its own
-     * failing request, and a hanging server would cost the heal timeout on
-     * every failure instead of once a minute.
-     */
-    public function backoffPath(): string
-    {
-        $fingerprint = substr(hash('sha256', $this->config->baseUrl . '|' . ($this->config->apiKey ?? '')), 0, 16);
-
-        return sys_get_temp_dir() . '/mnfst-backoff-' . $fingerprint;
     }
 
     /** True while the SDK is making its own call, so hooks can skip it. */
@@ -59,8 +49,25 @@ final class HealApi
         }
     }
 
+    /**
+     * PHP keeps nothing between requests, so the backoff lives in a marker file
+     * whose mtime is the deadline (like the handshake marker). Held in memory it
+     * would be forgotten immediately: every php-fpm worker would learn the
+     * project is disabled on its own failing request, and a hanging server would
+     * cost the heal timeout on every failure instead of once a minute.
+     */
+    public function backoffPath(): string
+    {
+        $fingerprint = substr(hash('sha256', $this->config->baseUrl . '|' . ($this->config->apiKey ?? '')), 0, 16);
+
+        return sys_get_temp_dir() . '/mnfst-backoff-' . $fingerprint;
+    }
+
     public function healingEnabled(): bool
     {
+        if ($this->config->apiKey === null) {
+            return false;
+        }
         $deadline = @filemtime($this->backoffPath());
 
         return $deadline === false || $deadline <= time();
@@ -103,6 +110,8 @@ final class HealApi
         }
 
         try {
+            // Json::decode so a healed body's {} survives as an object; a plain
+            // associative decode would hand the retry a [] and change the type.
             $decoded = Json::decode($raw);
         } catch (\Throwable) {
             return null;
@@ -111,36 +120,50 @@ final class HealApi
         return is_array($decoded) ? $decoded : null;
     }
 
-    public function reportOutcome(
-        string $healAttemptId,
-        ?int $retryStatusCode,
-        ?array $retryBody = null,
-        ?string $error = null,
-        bool $truncated = false,
-    ): void {
-        if ($error !== null) {
-            $body = ['failure' => [
-                'kind' => $error === self::NOT_ATTEMPTED ? 'not_attempted' : 'transport_error',
-                'message' => $error,
-            ]];
-        } else {
-            $response = ['statusCode' => $retryStatusCode];
-            if ($retryBody !== null) {
-                $response['body'] = $retryBody;
-                $response['truncated'] = $truncated;
-            }
-            $body = ['response' => $response];
+    /**
+     * The retry got an HTTP answer. A failure carries its raw body so the
+     * server can tell a recurrence from a newly revealed issue; a success
+     * carries the status alone.
+     */
+    public function reportResponse(string $healAttemptId, int $statusCode, mixed $body = null, bool $truncated = false): void
+    {
+        $response = ['statusCode' => $statusCode];
+        if ($body !== null) {
+            $response['body'] = $body;
+            $response['truncated'] = $truncated;
         }
+        $this->report($healAttemptId, ['response' => $response]);
+    }
 
-        $this->send('PATCH', '/v1/heal-attempts/' . rawurlencode($healAttemptId), $body, Config::HEAL_TIMEOUT_SECONDS);
+    /** The retry got no HTTP answer, or was never sent. Inconclusive evidence either way. */
+    public function reportFailure(string $healAttemptId, string $kind, string $message): void
+    {
+        $this->report($healAttemptId, ['failure' => ['kind' => $kind, 'message' => self::safeMessage($message)]]);
+    }
+
+    /** Masked like a URL on the wire, then cut at the cap without splitting a character. */
+    public static function safeMessage(string $message): string
+    {
+        $masked = preg_replace_callback(
+            '~https?://[^\s"\'()<>]+~i',
+            static fn (array $m): string => Wire::safeUrl($m[0]),
+            $message,
+        ) ?? $message;
+
+        return mb_strcut($masked, 0, self::FAILURE_MESSAGE_CAP, 'UTF-8');
+    }
+
+    private function report(string $healAttemptId, array $body): void
+    {
+        if ($this->config->apiKey === null) {
+            return;
+        }
+        $this->send('PATCH', '/v1/heal-attempts/' . rawurlencode($healAttemptId), $body, Config::REPORT_TIMEOUT_SECONDS);
     }
 
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
     private function send(string $method, string $path, array $body, int $timeout): ?array
     {
-        if ($this->config->apiKey === null) {
-            return null;   // without a key nothing is sent: the server would only answer 401
-        }
         $headers = [
             'Content-Type: application/json',
             'User-Agent: mnfst-php/' . Manifest::VERSION,
@@ -181,7 +204,6 @@ final class HealApi
     {
         $body = json_decode($raw, true);
 
-        return is_array($body)
-            && (($body['error'] ?? null) === 'project_disabled' || ($body['status'] ?? null) === 'app_disabled');
+        return is_array($body) && ($body['error'] ?? null) === 'project_disabled';
     }
 }

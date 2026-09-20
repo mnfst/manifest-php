@@ -4,6 +4,9 @@ namespace Mnfst\Tests\Integration;
 
 use Cake\Http\Client as CakeClient;
 use GuzzleHttp\Client as GuzzleClient;
+use Mnfst\Config;
+use Mnfst\HealApi;
+use Mnfst\Handshake;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -38,6 +41,14 @@ final class EndToEndTest extends TestCase
         $this->upstream = new StubUpstream();
         $this->upstream->start();
         $this->manifest->setResult(['status' => 'patched', 'healAttemptId' => 'e2e', 'healedRequest' => ['body' => ['limit' => 100]]]);
+
+        // The handshake and backoff markers live in the temp directory keyed by
+        // server and key. Stub ports repeat across runs, so clear this config's
+        // markers or a previous run's would suppress the announce.
+        $config = Config::resolve('proj_key', $this->manifest->url);
+        @unlink((new Handshake($config))->markerPath());
+        @unlink((new HealApi($config))->backoffPath());
+
         manifest('proj_key', $this->manifest->url);
     }
 

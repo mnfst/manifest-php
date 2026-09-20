@@ -3,10 +3,10 @@
 namespace Mnfst;
 
 /**
- * One captured failure, start to finish: heal, apply, retry once, report,
- * notify. Shared by every client hook so they cannot drift apart; a hook only
- * knows how to describe its call as a Capture and how to send a Retry with
- * the client that made the call.
+ * One captured failure, start to finish: heal, plan the retry, replay once,
+ * report, notify. Shared by every client hook so they cannot drift apart; a
+ * hook only knows how to describe its call as a Capture and how to send the
+ * planned retry with the client that made the call.
  *
  * Fails open at every step: any problem returns null and the caller serves
  * the original response (spec section 5, rule 5).
@@ -20,10 +20,11 @@ final class Healer
     }
 
     /**
-     * @param callable(Retry): Replay $send replays with the original client
-     * @return Replay|null the retry, or null to keep the original response
+     * @param callable(array{url: string, headers: array<string, ?string>, body: ?string}): Outcome $send
+     *        replays the planned retry with the original client
+     * @return \Mnfst\Outcome|null the retry, or null to keep the original response
      */
-    public function attempt(Capture $capture, callable $send): ?Replay
+    public function attempt(Capture $capture, callable $send): ?Outcome
     {
         if (!Gate::shouldCapture($capture->status)) {
             return null;
@@ -54,37 +55,34 @@ final class Healer
             if (!is_array($result)) {
                 return null;
             }
-            $attemptId = $result['healAttemptId'] ?? null;
+            $attemptId = is_string($result['healAttemptId'] ?? null) ? $result['healAttemptId'] : null;
 
-            $retry = Retry::build(
-                $capture->method,
-                $capture->url,
-                $capture->headers,
-                $body,
-                $replayable,
-                $contentType,
-                $result,
-            );
-            if ($retry === null) {
-                $this->abandon($attemptId);
+            $plan = Replay::plan($capture->method, $capture->url, $body, $replayable, $contentType, $result);
+            if ($plan === null) {
+                if ($attemptId !== null) {
+                    $this->api->reportFailure($attemptId, 'not_attempted', HealApi::NOT_ATTEMPTED);
+                }
 
                 return null;
             }
 
             $replayAttempted = true;
             try {
-                $replay = HealApi::withInternalCall(static fn (): Replay => $send($retry));
+                $outcome = HealApi::withInternalCall(static fn (): Outcome => $send($plan));
             } catch (\Throwable $e) {
-                $this->report($attemptId, null, null, 'transport_error: ' . $e->getMessage());
+                if ($attemptId !== null) {
+                    $this->api->reportFailure($attemptId, 'transport_error', $e->getMessage());
+                }
 
                 return null;
             }
 
-            $replayStatus = $replay->status;
-            [$failedBody, $failedTruncated] = $replayStatus >= 400 ? Wire::cappedResponseBody($replay->body) : [null, false];
-            $this->report($attemptId, $replayStatus, is_array($failedBody) ? $failedBody : null, null, $failedTruncated);
+            $replayStatus = $outcome->status;
+            if ($attemptId !== null) {
+                $this->reportOutcome($attemptId, $outcome);
+            }
 
-            return $replay;
+            return $outcome;
         } catch (\Throwable) {
             return null;
         } finally {
@@ -98,17 +96,16 @@ final class Healer
         }
     }
 
-    /** Close an attempt we opened but could not replay. */
-    private function abandon(mixed $attemptId): void
+    /** A failed retry carries its raw body so the server can tell a recurrence from a new issue. */
+    private function reportOutcome(string $attemptId, Outcome $outcome): void
     {
-        $this->report($attemptId, null, null, HealApi::NOT_ATTEMPTED);
-    }
+        if ($outcome->status < 400) {
+            $this->api->reportResponse($attemptId, $outcome->status);
 
-    private function report(mixed $attemptId, ?int $status, ?array $failedBody, ?string $error = null, bool $truncated = false): void
-    {
-        if (is_string($attemptId)) {
-            $this->api->reportOutcome($attemptId, $status, $failedBody, $error, $truncated);
+            return;
         }
+        [$body, $truncated] = Wire::cappedResponseBody($outcome->body);
+        $this->api->reportResponse($attemptId, $outcome->status, $body, $truncated);
     }
 
     /** The onHeal callback, when configured. It must never break the app. */

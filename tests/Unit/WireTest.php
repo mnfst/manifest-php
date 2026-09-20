@@ -2,6 +2,7 @@
 
 namespace Mnfst\Tests\Unit;
 
+use Mnfst\Bodies;
 use Mnfst\Wire;
 use PHPUnit\Framework\TestCase;
 
@@ -97,6 +98,19 @@ final class WireTest extends TestCase
         self::assertSame('ab', Wire::cutUtf8("ab\xE2\x82\xACcd", 4), 'a 3-byte sequence cut after 2 bytes is dropped');
         self::assertSame("\xF0\x9F\x98\x80", Wire::cutUtf8("\xF0\x9F\x98\x80\xF0\x9F\x98\x80", 6));
         self::assertSame('abc', Wire::cutUtf8('abcdef', 3));
+    }
+
+    public function testEmptyHeadersTravelAsAJsonObject(): void
+    {
+        $payload = Wire::healPayload('t', 'GET', 'https://a.test/x', [], null, 404, null, false, 1);
+        self::assertStringContainsString('"headers":{}', json_encode($payload));
+    }
+
+    public function testAnEmptyObjectBodyTravelsAsAJsonObject(): void
+    {
+        [$body] = Bodies::parseRequestBody('{}', 'application/json');
+        $payload = Wire::healPayload('t', 'POST', 'https://a.test/x', [], $body, 400, null, false, 1);
+        self::assertStringContainsString('"body":{}', json_encode($payload));
     }
 
     public function testHealPayloadShape(): void

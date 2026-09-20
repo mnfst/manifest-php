@@ -11,12 +11,16 @@ namespace Mnfst;
  * restored from the caller's copy unless the healed object names them.
  * Anything else (lists, scalars, a body that changed type) is replaced
  * wholesale.
+ *
+ * A healed `{}` decodes to [] and is indistinguishable from an empty list, so
+ * against an object original it is read as an empty object, and an object
+ * that merges to nothing is returned as stdClass so it encodes as `{}`.
  */
 final class Merge
 {
     public static function healedBody(mixed $original, mixed $traveled, mixed $healed): mixed
     {
-        if (!self::isObject($original) || !self::isObject($healed)) {
+        if (!self::isObject($original) || (!self::isObject($healed) && $healed !== [])) {
             return $healed;
         }
 

@@ -32,7 +32,7 @@ final class Handshake
     {
         try {
             if ($this->config->apiKey === null || $this->isFresh()) {
-                return;   // no key: the install is not connected to any project, there is nothing to announce
+                return;
             }
             @touch($this->markerPath());
             $this->send();

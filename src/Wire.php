@@ -231,7 +231,8 @@ final class Wire
             'request' => [
                 'method' => strtoupper($method),
                 'url' => self::safeUrl($url),
-                'headers' => self::safeHeaders($headers),
+                // an object even when empty: [] would encode as a JSON list
+                'headers' => (object) self::safeHeaders($headers),
                 'body' => self::travelingBody($body),
             ],
             'response' => [

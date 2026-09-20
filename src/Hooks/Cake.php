@@ -11,8 +11,7 @@ use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
-use Mnfst\Replay;
-use Mnfst\Retry;
+use Mnfst\Outcome;
 use Mnfst\Streams;
 use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
@@ -82,23 +81,48 @@ final class Cake
                     $responseBody,
                     $started,
                 );
-                $replay = self::$healer->attempt($capture, static function (Retry $retry) use ($sender, $request, $options): Replay {
-                    $replayed = $sender->send(self::request($request, $retry), $options);
+                $outcome = self::$healer->attempt($capture, static function (array $plan) use ($sender, $request, $options): Outcome {
+                    $replayed = $sender->send(self::retryRequest($request, $plan), $options);
 
-                    return new Replay($replayed->getStatusCode(), Streams::read($replayed->getBody(), Wire::RESPONSE_BODY_CAP)[0], $replayed);
+                    return new Outcome(
+                        $replayed->getStatusCode(),
+                        Streams::read($replayed->getBody(), Wire::RESPONSE_BODY_CAP)[0],
+                        $replayed,
+                    );
                 });
 
-                return $replay?->response instanceof CakeResponse ? $replay->response : $response;
+                return $outcome?->response instanceof CakeResponse ? $outcome->response : $response;
             },
         );
 
         return true;
     }
 
-    /** The original request with the healed URL, headers and body swapped in. */
-    private static function request(RequestInterface $original, Retry $retry): CakeRequest
+    /**
+     * The original request with the healed URL, header deltas and body applied.
+     *
+     * @param array{url: string, headers: array<string, ?string>, body: ?string} $plan
+     */
+    private static function retryRequest(RequestInterface $original, array $plan): CakeRequest
     {
-        return (new CakeRequest($retry->url, $original->getMethod(), $retry->headers, $retry->body))
+        $headers = [];
+        foreach ($original->getHeaders() as $name => $values) {
+            if (strtolower($name) !== 'content-length') {
+                $headers[$name] = $values;
+            }
+        }
+        foreach ($plan['headers'] as $name => $value) {
+            foreach (array_keys($headers) as $existing) {
+                if (strcasecmp($existing, $name) === 0) {
+                    unset($headers[$existing]);
+                }
+            }
+            if ($value !== null) {
+                $headers[$name] = [$value];
+            }
+        }
+
+        return (new CakeRequest($plan['url'], $original->getMethod(), $headers, $plan['body']))
             ->withProtocolVersion($original->getProtocolVersion());
     }
 

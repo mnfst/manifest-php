@@ -59,6 +59,32 @@ final class CurlHookTest extends TestCase
         self::assertStringContainsString('/orders', $heals[0]['request']['url']);
     }
 
+    public function testHeadersTravelAsAJsonMap(): void
+    {
+        $this->post('/orders', ['limit' => 500]);
+
+        [$raw] = $this->manifest->rawHeals();
+        self::assertStringContainsString(
+            '"headers":{"content-type":"application\/json"}',
+            $raw,
+            'the headers the call set travel, as a map: the server rejects a JSON list where it expects one',
+        );
+    }
+
+    public function testHeadersTravelAsAnEmptyObjectWhenTheCallSetNone(): void
+    {
+        $ch = curl_init($this->upstream->url . '/orders');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode(['limit' => 500]),
+        ]);
+        curl_exec($ch);
+
+        [$raw] = $this->manifest->rawHeals();
+        self::assertStringContainsString('"headers":{}', $raw, 'never [] — the server expects a map');
+    }
+
     public function testTheRequestAndResponseBodiesTravel(): void
     {
         $this->post('/orders', ['limit' => 500]);

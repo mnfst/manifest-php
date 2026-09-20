@@ -158,7 +158,7 @@ final class Curl
             // must be closed, or its ledger waits for an answer that never comes.
             $attemptId = is_array($result) ? ($result['healAttemptId'] ?? null) : null;
             if (is_string($attemptId)) {
-                $api->reportOutcome($attemptId, null, null, HealApi::NOT_ATTEMPTED);
+                $api->reportFailure($attemptId, 'not_attempted', HealApi::NOT_ATTEMPTED);
             }
         } catch (\Throwable) {
             // observation must never affect the caller

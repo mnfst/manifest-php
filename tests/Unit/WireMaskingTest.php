@@ -134,8 +134,10 @@ final class WireMaskingTest extends TestCase
             42,
         );
 
-        self::assertSame('REDACTED', $payload['request']['headers']['authorization']);
-        self::assertSame('application/json', $payload['request']['headers']['accept']);
+        // headers travel as a JSON object, so an empty set is {} and not []
+        $headers = (array) $payload['request']['headers'];
+        self::assertSame('REDACTED', $headers['authorization']);
+        self::assertSame('application/json', $headers['accept']);
         self::assertSame('raw error text', $payload['response']['body'], 'a string response body travels as-is');
         self::assertTrue($payload['response']['truncated']);
         self::assertSame(42, $payload['responseTimeMs']);

@@ -55,6 +55,19 @@ final class HandshakeTest extends TestCase
         self::assertStringStartsWith('php-', $hello['runtime']);
     }
 
+    public function testAnInstallIsNotAProbe(): void
+    {
+        $this->handshake()->announce();
+        [$hello] = $this->stub->hellos();
+        self::assertArrayNotHasKey('probe', $hello);
+    }
+
+    public function testWithoutAKeyThereIsNoHandshake(): void
+    {
+        (new Handshake(Config::resolve(null, $this->stub->url)))->announce();
+        self::assertSame([], $this->stub->hellos());
+    }
+
     public function testAnnouncesAgainOnceTheMarkerIsStale(): void
     {
         $handshake = $this->handshake();

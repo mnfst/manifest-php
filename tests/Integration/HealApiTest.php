@@ -56,7 +56,7 @@ final class HealApiTest extends TestCase
         $api = new HealApi(Config::resolve(null, $this->stub->url));
 
         self::assertNull($api->heal($this->payload()));
-        $api->reportOutcome('a1', 200);
+        $api->reportResponse('a1', 200);
 
         self::assertSame([], $this->stub->requests());
     }
@@ -80,23 +80,56 @@ final class HealApiTest extends TestCase
 
     public function testASuccessfulOutcomeSendsOnlyTheStatus(): void
     {
-        $this->api()->reportOutcome('a1', 200);
+        $this->api()->reportResponse('a1', 200);
         self::assertSame([['a1', ['response' => ['statusCode' => 200]]]], $this->stub->outcomes());
     }
 
     public function testAFailedOutcomeSendsTheRawBody(): void
     {
-        $this->api()->reportOutcome('a1', 400, ['error' => 'still broken']);
+        $this->api()->reportResponse('a1', 400, ['error' => 'still broken'], false);
         [[, $sent]] = $this->stub->outcomes();
-        self::assertSame(400, $sent['response']['statusCode']);
-        self::assertSame(['error' => 'still broken'], $sent['response']['body']);
+        self::assertSame(['statusCode' => 400, 'body' => ['error' => 'still broken'], 'truncated' => false], $sent['response']);
+    }
+
+    public function testAFailedOutcomeSaysWhenItsBodyWasCut(): void
+    {
+        $this->api()->reportResponse('a1', 400, '<html>not json', true);
+        [[, $sent]] = $this->stub->outcomes();
+        self::assertSame(['statusCode' => 400, 'body' => '<html>not json', 'truncated' => true], $sent['response']);
     }
 
     public function testAnUnattemptedReplayIsReported(): void
     {
-        $this->api()->reportOutcome('a1', null, null, HealApi::NOT_ATTEMPTED);
+        $this->api()->reportFailure('a1', 'not_attempted', HealApi::NOT_ATTEMPTED);
         [[, $sent]] = $this->stub->outcomes();
         self::assertSame(['kind' => 'not_attempted', 'message' => 'replay_not_attempted'], $sent['failure']);
+    }
+
+    public function testATransportFailureIsReportedWithItsMessageCapped(): void
+    {
+        $this->api()->reportFailure('a1', 'transport_error', str_repeat('é', 400));
+        [[, $sent]] = $this->stub->outcomes();
+        self::assertSame('transport_error', $sent['failure']['kind']);
+        self::assertLessThanOrEqual(512, strlen($sent['failure']['message']));
+        self::assertTrue(mb_check_encoding($sent['failure']['message'], 'UTF-8'), 'the cap must not split a character');
+    }
+
+    public function testAFailureMessageMasksCredentialsInUrls(): void
+    {
+        // curl's connect errors quote the effective URL, query string included
+        $this->api()->reportFailure('a1', 'transport_error', 'cURL error 7: failed for https://u:p@a.test/x?api_key=sk_live_1&page=2');
+        [[, $sent]] = $this->stub->outcomes();
+        self::assertStringContainsString('https://a.test/x?api_key=REDACTED&page=2', $sent['failure']['message']);
+        self::assertStringNotContainsString('sk_live_1', $sent['failure']['message']);
+    }
+
+    public function testWithoutAKeyNothingIsSent(): void
+    {
+        $api = new HealApi(Config::resolve(null, $this->stub->url));
+        self::assertNull($api->heal($this->payload()));
+        $api->reportResponse('a1', 200);
+        self::assertSame([], $this->stub->heals());
+        self::assertSame([], $this->stub->outcomes());
     }
 
     public function testProjectDisabledTripsTheBackoff(): void

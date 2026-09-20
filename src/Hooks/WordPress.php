@@ -8,8 +8,7 @@ use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
-use Mnfst\Replay;
-use Mnfst\Retry;
+use Mnfst\Outcome;
 use Mnfst\Wire;
 use WpOrg\Requests\Requests;
 use WpOrg\Requests\Response;
@@ -70,23 +69,33 @@ final class WordPress
                     Wire::cutUtf8((string) $response->body, Wire::RESPONSE_BODY_CAP + 1),
                     microtime(true),
                 );
-                $replay = self::$healer->attempt($capture, static function (Retry $retry) use ($method, $options): Replay {
+                $outcome = self::$healer->attempt($capture, static function (array $plan) use ($headers, $method, $options): Outcome {
                     $flat = [];
-                    foreach ($retry->headers as $name => $values) {
+                    foreach ($headers as $name => $values) {
                         $flat[$name] = implode(', ', $values);
                     }
+                    foreach ($plan['headers'] as $name => $value) {
+                        foreach (array_keys($flat) as $existing) {
+                            if (strcasecmp($existing, $name) === 0) {
+                                unset($flat[$existing]);
+                            }
+                        }
+                        if ($value !== null) {
+                            $flat[$name] = $value;
+                        }
+                    }
                     $replayed = HealApi::withInternalCall(
-                        static fn (): Response => Requests::request($retry->url, $flat, $retry->body ?? '', $method, $options),
+                        static fn (): Response => Requests::request($plan['url'], $flat, $plan['body'] ?? '', $method, $options),
                     );
 
-                    return new Replay(
+                    return new Outcome(
                         is_int($replayed->status_code) ? $replayed->status_code : 0,
                         Wire::cutUtf8((string) $replayed->body, Wire::RESPONSE_BODY_CAP + 1),
                         $replayed,
                     );
                 });
 
-                return $replay?->response instanceof Response ? $replay->response : $response;
+                return $outcome?->response instanceof Response ? $outcome->response : $response;
             },
         );
 

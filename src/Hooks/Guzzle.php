@@ -14,10 +14,8 @@ use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
-use Mnfst\Replay;
-use Mnfst\Retry;
+use Mnfst\Outcome;
 use Mnfst\Streams;
-use Mnfst\Wire;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\StreamInterface;
@@ -78,23 +76,25 @@ final class Guzzle
                 // effectively the request's start time.
                 $started = microtime(true);
                 $send = self::sender($client, $request, is_array($params[1] ?? null) ? $params[1] : []);
+                $retried = null;
 
                 return $promise->then(
                     static fn (ResponseInterface $response): ResponseInterface => self::outcome($request, $response, $started, $send),
-                    static function (mixed $reason) use ($request, $started, $send): mixed {
+                    static function (mixed $reason) use ($request, $started, $send, &$retried): mixed {
                         if (!$reason instanceof BadResponseException) {
                             return Create::rejectionFor($reason);
                         }
                         $original = $reason->getResponse();
-                        $outcome = self::outcome($request, $original, $started, $send);
+                        $outcome = self::outcome($request, $original, $started, $send, $retried);
                         if ($outcome === $original) {
                             return Create::rejectionFor($reason);
                         }
                         // The caller runs with http_errors on: a failure, retried or
                         // rebuilt, must throw like the original did, not resolve as
-                        // a response the caller would take for a success.
+                        // a response the caller would take for a success. The
+                        // exception names the request that actually produced it.
                         if ($outcome->getStatusCode() >= 400) {
-                            return Create::rejectionFor(RequestException::create($request, $outcome));
+                            return Create::rejectionFor(RequestException::create($retried ?? $request, $outcome));
                         }
 
                         return $outcome;
@@ -110,10 +110,15 @@ final class Guzzle
      * The response the caller gets: the retry's, or the original one, rebuilt
      * when the SDK had to consume its body to read it.
      *
-     * @param callable(Retry): Replay $send
+     * @param callable(array{url: string, headers: array<string, ?string>, body: ?string}): Outcome $send
      */
-    private static function outcome(RequestInterface $request, ResponseInterface $response, float $started, callable $send): ResponseInterface
-    {
+    private static function outcome(
+        RequestInterface $request,
+        ResponseInterface $response,
+        float $started,
+        callable $send,
+        ?RequestInterface &$retried = null,
+    ): ResponseInterface {
         if (self::$healer === null || !Gate::shouldCapture($response->getStatusCode())) {
             return $response;
         }
@@ -129,37 +134,43 @@ final class Guzzle
             $responseBody,
             $started,
         );
-        $replay = self::$healer->attempt($capture, $send);
+        $outcome = self::$healer->attempt($capture, static function (array $plan) use ($send, $request, &$retried): Outcome {
+            $retried = self::retryRequest($request, $plan);
 
-        return $replay?->response instanceof ResponseInterface ? $replay->response : $response;
+            return $send($plan);
+        });
+
+        return $outcome?->response instanceof ResponseInterface ? $outcome->response : $response;
     }
 
-    /** @return callable(Retry): Replay */
+    /** @return callable(array{url: string, headers: array<string, ?string>, body: ?string}): Outcome */
     private static function sender(mixed $client, RequestInterface $original, array $options): callable
     {
         $sender = $client instanceof Client ? $client : new Client();
         $options = array_diff_key($options, array_flip(self::CONSUMED_OPTIONS));
         $options['http_errors'] = false;
 
-        return static function (Retry $retry) use ($sender, $original, $options): Replay {
-            $replayed = $sender->send(self::request($original, $retry), $options);
+        return static function (array $plan) use ($sender, $original, $options): Outcome {
+            $replayed = $sender->send(self::retryRequest($original, $plan), $options);
             [$body, $replayed] = Streams::readResponse($replayed, static fn (string $raw): StreamInterface => Utils::streamFor($raw));
 
-            return new Replay($replayed->getStatusCode(), $body, $replayed);
+            return new Outcome($replayed->getStatusCode(), $body, $replayed);
         };
     }
 
-    /** The original request with the healed URL, headers and body swapped in. */
-    private static function request(RequestInterface $original, Retry $retry): RequestInterface
+    /**
+     * The original request with the healed URL, header deltas and body applied.
+     *
+     * @param array{url: string, headers: array<string, ?string>, body: ?string} $plan
+     */
+    private static function retryRequest(RequestInterface $request, array $plan): RequestInterface
     {
-        $request = $original->withUri(new Uri($retry->url));
-        foreach (array_keys($original->getHeaders()) as $name) {
-            $request = $request->withoutHeader($name);
+        $retry = $request->withUri(new Uri($plan['url']))->withoutHeader('Content-Length');
+        foreach ($plan['headers'] as $name => $value) {
+            $retry = $value === null ? $retry->withoutHeader($name) : $retry->withHeader($name, $value);
         }
-        foreach ($retry->headers as $name => $values) {
-            $request = $request->withHeader($name, $values);
-        }
+        $retry = $retry->withBody(Utils::streamFor($plan['body'] ?? ''));
 
-        return $request->withBody(Utils::streamFor($retry->body ?? ''));
+        return $plan['body'] === null ? $retry : $retry->withHeader('Content-Length', (string) strlen($plan['body']));
     }
 }

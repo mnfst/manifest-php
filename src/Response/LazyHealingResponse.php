@@ -7,8 +7,7 @@ use Mnfst\Capture;
 use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
-use Mnfst\Replay;
-use Mnfst\Retry;
+use Mnfst\Outcome;
 use Mnfst\Wire;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -125,9 +124,9 @@ final class LazyHealingResponse implements ResponseInterface
                 Wire::cutUtf8($this->inner->getContent(false), Wire::RESPONSE_BODY_CAP + 1),
                 $this->started,
             );
-            $replay = $this->healer->attempt($capture, $this->send(...));
-            if ($replay?->response instanceof ResponseInterface) {
-                $this->current = $replay->response;
+            $outcome = $this->healer->attempt($capture, $this->send(...));
+            if ($outcome?->response instanceof ResponseInterface) {
+                $this->current = $outcome->response;
             }
         } catch (\Throwable) {
             // fail open: keep the original response
@@ -136,22 +135,36 @@ final class LazyHealingResponse implements ResponseInterface
         return $this->current;
     }
 
-    /** Re-send the healed request through the same client and read its outcome. */
-    private function send(Retry $retry): Replay
+    /**
+     * Re-send the healed request through the same client and read its outcome.
+     *
+     * @param array{url: string, headers: array<string, ?string>, body: ?string} $plan
+     */
+    private function send(array $plan): Outcome
     {
-        return HealApi::withInternalCall(function () use ($retry): Replay {
+        return HealApi::withInternalCall(function () use ($plan): Outcome {
             $headers = [];
-            foreach ($retry->headers as $name => $values) {
+            foreach ($this->headers() as $name => $values) {
                 $headers[$name] = $values;
             }
-            $options = ['headers' => $headers];
-            if ($retry->body !== null) {
-                $options['body'] = $retry->body;
+            foreach ($plan['headers'] as $name => $value) {
+                foreach (array_keys($headers) as $existing) {
+                    if (strcasecmp($existing, $name) === 0) {
+                        unset($headers[$existing]);
+                    }
+                }
+                if ($value !== null) {
+                    $headers[$name] = [$value];
+                }
             }
-            $response = $this->client->request($this->method, $retry->url, $options);
+            $options = ['headers' => $headers];
+            if ($plan['body'] !== null) {
+                $options['body'] = $plan['body'];
+            }
+            $response = $this->client->request($this->method, $plan['url'], $options);
             $status = $response->getStatusCode(false);
 
-            return new Replay($status, Wire::cutUtf8($response->getContent(false), Wire::RESPONSE_BODY_CAP + 1), $response);
+            return new Outcome($status, Wire::cutUtf8($response->getContent(false), Wire::RESPONSE_BODY_CAP + 1), $response);
         });
     }
 

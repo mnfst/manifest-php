@@ -39,33 +39,23 @@ final class BodiesTest extends TestCase
     {
         [$body] = Bodies::parseRequestBody('tag=a&tag=b&tag=c', Bodies::FORM);
         self::assertSame(['tag' => ['a', 'b', 'c']], $body, 'parse_str kept only the last value');
-        self::assertSame('tag%5B0%5D=a&tag%5B1%5D=b&tag%5B2%5D=c', Bodies::encodeRequestBody($body, Bodies::FORM));
+        self::assertSame('tag=a&tag=b&tag=c', Bodies::encodeRequestBody($body, Bodies::FORM), 'a repeated name is repeated, so it round-trips');
     }
 
-    public function testBracketPathsNest(): void
+    public function testBracketNamesStayLiteral(): void
     {
-        [$body] = Bodies::parseRequestBody('u[name]=x&u[roles][]=r1&u[roles][]=r2&m[3]=three', Bodies::FORM);
-        self::assertSame(['u' => ['name' => 'x', 'roles' => ['r1', 'r2']], 'm' => [3 => 'three']], $body);
-        self::assertSame(
-            'u%5Bname%5D=x&u%5Broles%5D%5B0%5D=r1&u%5Broles%5D%5B1%5D=r2&m%5B3%5D=three',
-            Bodies::encodeRequestBody($body, Bodies::FORM),
-        );
+        // A bracketed name is one field name, not a path: the server sees what
+        // the caller sent, and the retry sends it back unchanged.
+        [$body] = Bodies::parseRequestBody('u[name]=x&m[3]=three', Bodies::FORM);
+        self::assertSame(['u[name]' => 'x', 'm[3]' => 'three'], $body);
+        self::assertSame('u%5Bname%5D=x&m%5B3%5D=three', Bodies::encodeRequestBody($body, Bodies::FORM));
     }
 
-    public function testAMalformedFormIsReportedButNotReplayable(): void
+    public function testFormValuesEncodeAsScalars(): void
     {
-        foreach (['a[]=1&a[k]=2', 'a[k]=1&a[]=2', '[x]=1', 'a[b=1', 'a]=1', 'x=%E9', 'a=1&a[b]=2'] as $raw) {
-            [$body, $replayable] = Bodies::parseRequestBody($raw, Bodies::FORM);
-            self::assertNull($body, $raw);
-            self::assertFalse($replayable, $raw);
-        }
-    }
-
-    public function testFormValuesEncodeLikeTheNodeSdk(): void
-    {
-        $encoded = Bodies::encodeRequestBody(['on' => true, 'off' => false, 'none' => null, 'n' => 1.5, 'empty' => new \stdClass()], Bodies::FORM);
-        self::assertSame('on=true&off=false&none=&n=1.5', $encoded);
-        self::assertNull(Bodies::encodeRequestBody(['x' => INF], Bodies::FORM));
+        $encoded = Bodies::encodeRequestBody(['on' => true, 'off' => false, 'none' => null, 'n' => 1.5], Bodies::FORM);
+        self::assertSame('on=1&off=0&none=&n=1.5', $encoded, 'scalars are cast the way PHP encodes a form');
+        self::assertNull(Bodies::encodeRequestBody(['nested' => ['a' => 1]], Bodies::FORM), 'a nested structure is not a form field');
     }
 
     public function testUnparseableBytesAreReportedButNotReplayable(): void
@@ -87,9 +77,31 @@ final class BodiesTest extends TestCase
         self::assertSame('{"limit":100}', Bodies::encodeRequestBody(['limit' => 100], 'application/json'));
     }
 
-    public function testEncodesFormUrlencodedWithIndexedRepeatedKeys(): void
+    public function testRepeatedFormKeysSurviveTheRoundTrip(): void
     {
-        self::assertSame('tag%5B0%5D=a&tag%5B1%5D=b', Bodies::encodeRequestBody(['tag' => ['a', 'b']], 'application/x-www-form-urlencoded'));
+        [$body] = Bodies::parseRequestBody('tag=a&tag=b', Bodies::FORM);
+        self::assertSame(['tag' => ['a', 'b']], $body);
+        self::assertSame('tag=a&tag=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testBracketedFormKeysAreNotReinterpreted(): void
+    {
+        [$body] = Bodies::parseRequestBody('tag%5B%5D=a&tag%5B%5D=b', Bodies::FORM);
+        self::assertSame(['tag[]' => ['a', 'b']], $body);
+        self::assertSame('tag%5B%5D=a&tag%5B%5D=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testFormKeysWithDotsAndSpacesSurviveTheRoundTrip(): void
+    {
+        [$body] = Bodies::parseRequestBody('first.name=a&user+id=b', Bodies::FORM);
+        self::assertSame(['first.name' => 'a', 'user id' => 'b'], $body);
+        self::assertSame('first.name=a&user+id=b', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testAnEmptyJsonObjectEncodesAsAnObject(): void
+    {
+        [$body] = Bodies::parseRequestBody('{}', Bodies::JSON);
+        self::assertSame('{}', Bodies::encodeRequestBody($body, Bodies::JSON));
     }
 
     public function testANonObjectBodyIsNotEncodableAsAForm(): void

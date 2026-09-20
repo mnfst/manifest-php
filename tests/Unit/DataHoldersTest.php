@@ -4,7 +4,7 @@ namespace Mnfst\Tests\Unit;
 
 use Mnfst\Capture;
 use Mnfst\HealEvent;
-use Mnfst\Replay;
+use Mnfst\Outcome;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -67,10 +67,10 @@ final class DataHoldersTest extends TestCase
         self::assertTrue($capture->oversized);
     }
 
-    public function testReplayStoresEveryFieldImmutably(): void
+    public function testOutcomeStoresEveryFieldImmutably(): void
     {
         $response = (object) ['handedBack' => true];
-        $replay = new Replay(200, '{"ok":true}', $response);
+        $replay = new Outcome(200, '{"ok":true}', $response);
 
         self::assertSame(200, $replay->status);
         self::assertSame('{"ok":true}', $replay->body);
