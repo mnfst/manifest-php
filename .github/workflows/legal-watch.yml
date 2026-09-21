@@ -1,0 +1,45 @@
+name: Legal watch
+
+# Asks a model, through the Manifest LLM Gateway, whether this pull request
+# makes a sentence of manifest.build/terms or /privacy false, and comments on
+# the pull request when it does. It only starts when a file that touches user
+# data changes, and it never blocks a merge.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'bin/**'
+      - 'prepend.php'
+      - 'composer.json'
+      - '.github/legal-watch/**'
+      - '.github/workflows/legal-watch.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: legal-watch-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check the legal pages
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/legal-watch
+      - name: Ask the model
+        run: node .github/legal-watch/check.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MANIFEST_GATEWAY_KEY: ${{ secrets.MANIFEST_GATEWAY_KEY }}
+          LEGAL_WATCH_MODEL: ${{ vars.LEGAL_WATCH_MODEL }}
+          LEGAL_WATCH_BASE_URL: ${{ vars.LEGAL_WATCH_BASE_URL }}
