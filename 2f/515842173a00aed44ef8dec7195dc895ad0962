@@ -1,0 +1,25 @@
+CODE_OF_CONDUCT.md
+  s_062b470463ff4f::t_f69e98bfe1690f 1-69
+CONTRIBUTING.md
+  s_062b470463ff4f::t_8c022e8839709b 1-70
+LICENSE
+  s_062b470463ff4f::t_10179bbe64299b 1-21
+SECURITY.md
+  s_062b470463ff4f::t_45a7e4f3f0ba60 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2f515842173a00aed44ef8dec7195dc895ad0962",
+  "prompts": {},
+  "sessions": {
+    "s_062b470463ff4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d375f145-17cf-41a4-8512-f3e53a4a262a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
