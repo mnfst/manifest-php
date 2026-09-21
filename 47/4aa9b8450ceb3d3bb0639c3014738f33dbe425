@@ -1,0 +1,19 @@
+README.md
+  s_062b470463ff4f::t_1602e5706bafa3 50,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "474aa9b8450ceb3d3bb0639c3014738f33dbe425",
+  "prompts": {},
+  "sessions": {
+    "s_062b470463ff4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d375f145-17cf-41a4-8512-f3e53a4a262a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
