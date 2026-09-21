@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 const { REPO, PR_NUMBER, MANIFEST_GATEWAY_KEY: KEY } = process.env;
-const BASE = (process.env.LEGAL_WATCH_BASE_URL || 'https://gateway.manifest.build/v1').replace(/\/+$/, '');
+const BASE = (process.env.LEGAL_WATCH_BASE_URL || 'https://app.manifest.build/v1').replace(/\/+$/, '');
 const MODEL = process.env.LEGAL_WATCH_MODEL || 'auto';
 const REVIEWER = process.env.LEGAL_WATCH_REVIEWER || 'SebConejo';
 const DRY_RUN = process.env.LEGAL_WATCH_DRY_RUN === '1';
