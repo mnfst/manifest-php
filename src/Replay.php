@@ -34,6 +34,7 @@ final class Replay
         bool $replayable,
         string $contentType,
         mixed $result,
+        array $originalHeaders = [],
     ): ?array {
         if (!$replayable || !is_array($result) || !in_array($result['status'] ?? null, ['patched', 'unverified'], true)) {
             return null;
@@ -44,7 +45,7 @@ final class Replay
         }
 
         $target = self::url($url, $healed['url'] ?? null);
-        $headers = self::headers($healed['headers'] ?? null);
+        $headers = self::headers($healed['headers'] ?? null, $originalHeaders);
         if ($target === null || $headers === null) {
             return null;
         }
@@ -70,7 +71,7 @@ final class Replay
         if ($healed === null) {
             return $original;
         }
-        if (!is_string($healed)) {
+        if (!is_string($healed) || preg_match('/[\\\\\x00-\x20\x7f]/', $healed)) {
             return null;
         }
         $from = parse_url($original);
@@ -78,27 +79,83 @@ final class Replay
         if ($from === false || $to === false || isset($to['user']) || isset($to['pass'])) {
             return null;
         }
-        foreach (['scheme', 'host', 'port'] as $part) {
-            if (strtolower((string) ($from[$part] ?? '')) !== strtolower((string) ($to[$part] ?? ''))) {
+        if (!in_array(strtolower($to['scheme'] ?? ''), ['http', 'https'], true) || empty($to['host'])) {
+            return null;
+        }
+        foreach (['scheme', 'host'] as $part) {
+            if (strtolower((string) ($from[$part] ?? '')) !== strtolower($to[$part])) {
                 return null;
             }
         }
+        $defaultPort = strtolower($from['scheme'] ?? '') === 'https' ? 443 : 80;
+        if (($from['port'] ?? $defaultPort) !== ($to['port'] ?? $defaultPort)) {
+            return null;
+        }
 
-        return $healed;
+        return self::settleQuery($healed, $to['query'] ?? '', $from['query'] ?? '');
+    }
+
+    /**
+     * The healed query, with what the server could not have decided put back.
+     *
+     * Credential values travel masked, so a `name=REDACTED` coming back takes
+     * the original value again, and a credential the healed URL left out is
+     * re-attached: the server only ever saw its name, so its absence is not a
+     * decision — and a retry without the key is a certain 401. A mask with
+     * nothing to restore abandons the retry rather than sending the literal.
+     * The fragment never goes on the wire.
+     */
+    private static function settleQuery(string $url, string $healedQuery, string $originalQuery): ?string
+    {
+        $originals = [];
+        foreach (Wire::queryPairs($originalQuery) as [$name, $value]) {
+            $originals[urldecode($name)][] = [$name, $value];
+        }
+
+        $pairs = [];
+        $seen = [];
+        foreach (Wire::queryPairs($healedQuery) as [$name, $value]) {
+            $decoded = urldecode($name);
+            $index = $seen[$decoded] ?? 0;
+            $seen[$decoded] = $index + 1;
+            if ($value !== null && urldecode($value) === self::MASK) {
+                $value = $originals[$decoded][$index][1] ?? null;
+                if ($value === null) {
+                    return null;
+                }
+            }
+            $pairs[] = $value === null ? $name : $name . '=' . $value;
+        }
+        foreach ($originals as $decoded => $values) {
+            if (!isset($seen[$decoded]) && Wire::isSecretField((string) $decoded)) {
+                foreach ($values as [$name, $value]) {
+                    $pairs[] = $value === null ? $name : $name . '=' . $value;
+                }
+            }
+        }
+
+        $base = explode('#', explode('?', $url, 2)[0], 2)[0];
+
+        return $base . ($pairs === [] ? '' : '?' . implode('&', $pairs));
     }
 
     /** @return array<string, ?string>|null set (string) or remove (null) per name; null when malformed */
-    private static function headers(mixed $healed): ?array
+    private static function headers(mixed $healed, array $original): ?array
     {
-        if ($healed === null) {
+        if ($healed === null || Json::isEmptyObject($healed)) {
             return [];
         }
         if (!is_array($healed) || ($healed !== [] && array_is_list($healed))) {
             return null;
         }
         $out = [];
+        $known = array_change_key_case($original, CASE_LOWER);
         foreach ($healed as $name => $value) {
-            if ($value !== null && !is_string($value)) {
+            if (!is_string($name) || !preg_match('/^[!#$%&\x27*+.^_`|~0-9A-Za-z-]+$/D', $name)
+                || ($value !== null && (!is_string($value) || preg_match('/[\r\n\x00]/', $value)))) {
+                return null;
+            }
+            if ($value === self::MASK && !array_key_exists(strtolower($name), $known)) {
                 return null;
             }
             if ($value !== self::MASK) {
@@ -107,5 +164,22 @@ final class Replay
         }
 
         return $out;
+    }
+
+    /** Apply header deltas once for every client; the transport recalculates framing. */
+    public static function headersFor(array $original, array $plan): array
+    {
+        $headers = array_change_key_case($original, CASE_LOWER);
+        foreach ($plan['headers'] as $name => $value) {
+            $name = strtolower($name);
+            if ($value === null) {
+                unset($headers[$name]);
+            } else {
+                $headers[$name] = [$value];
+            }
+        }
+        unset($headers['content-length'], $headers['transfer-encoding']);
+
+        return $headers;
     }
 }

@@ -29,11 +29,11 @@ Best-effort and fire-and-forget: a handshake that fails is never retried and nev
 
 Every JSON map is encoded as an object even when empty (`"headers": {}`, never `[]`, which the server refuses as a list). Any 4xx response is captured except 401, 402, 403 and 429; those and every 5xx pass through untouched, because auth, billing, rate limiting and server faults are not repaired by editing the request. Credential filtering and body limits are described in the README. Capture gates live in `Gate.php`; the server owns repair policy.
 
-A successful heal response may contain `status: patched|unverified`, `healAttemptId`, `operations` and `healedRequest` with `url`, `headers` or `body`. Only these two statuses authorize a retry. No patch, malformed responses and unavailable service return the original error response. HTTP 403 with `{"error":"project_disabled"}` suppresses healing for five minutes.
+A successful heal response may contain `status: patched|unverified`, `healAttemptId`, `operations` and `healedRequest` with `url`, `headers` or `body`. Only these two statuses authorize a retry. No patch, malformed responses and unavailable service return the original error response. HTTP 403 with `{"error":"project_disabled"}` and HTTP 401 suppress healing for five minutes; a timeout, a transport failure or a 5xx suppresses it for one minute. The SDK remembers this across requests.
 
 ## Apply
 
-The server heals the whole request — operations address the query string, headers and path as well as the body — and `healedRequest` carries every side. `Replay::plan` applies all of them: a healed URL replaces the URL only within the original origin and never with credentials in it; headers set or replace case-insensitively, null removes a header, and a value equal to the SDK's own mask (`REDACTED`) is never put on the wire. Content length is recalculated. Objects merge using the server's healed body as the authoritative copy of fields sent to the server; withheld local credential fields are restored. Non-object JSON replaces the body. A form-urlencoded request is replayed as a form with its field names kept verbatim (dots, spaces and brackets included) and a repeated name repeated; a non-object healed body is not retried for one. An unreadable or unparseable original body is not retried. A healed body that merges to nothing is sent as no body at all: GET, HEAD, DELETE and OPTIONS retry bodyless, and any other method is not retried.
+The server heals the whole request — operations address the query string, headers and path as well as the body — and `healedRequest` carries every side. `Replay::plan` applies all of them: a healed URL replaces the URL only within the original origin and never with credentials in it; headers set or replace case-insensitively, null removes a header, and a value equal to the SDK's own mask (`REDACTED`) is never put on the wire. A masked query value is restored from the original request, and a credential-named query parameter the original carried and the healed URL omits is put back, since the server never saw its value; a mask with nothing to restore is not retried. Fragments are dropped. Content length is recalculated. Objects merge using the server's healed body as the authoritative copy of fields sent to the server; withheld local credential fields are restored. Non-object JSON replaces the body. A form-urlencoded request is replayed as a form with its field names kept verbatim (dots, spaces and brackets included) and a repeated name repeated; a non-object healed body is not retried for one. An unreadable or unparseable original body is not retried. A healed body that merges to nothing is sent as no body at all: GET, HEAD, DELETE and OPTIONS retry bodyless, and any other method is not retried.
 
 Each captured failure permits one retry, sent through the same client instance with the caller's own options (handler stack, proxy, TLS, timeouts), so a faked or mocked client stays faked on the retry. A retry response, including another failure, is returned to the caller the way the original would have been: a Guzzle client with `http_errors` on gets the retry's `ClientException`, not a fulfilled 4xx. A transport failure returns the original response. Successful response streams are not eagerly consumed.
 
@@ -60,3 +60,16 @@ Each captured failure permits one retry, sent through the same client instance w
 HTTP status must be 200–599. A failed retry carries its raw body, JSON or not, and whether it was cut at 64 KB. Failure messages have any URL masked like a captured URL and are cut at 512 UTF-8 bytes. HTTP status zero is not a wire status. A retry that never got an HTTP answer reports `transport_error`; one the SDK decided not to send reports `not_attempted`. Transport failures and unattempted retries are inconclusive evidence; neither can verify or invalidate a patch. The server determines the verdict from the raw evidence, with the first accepted report winning.
 
 Reports are best effort and bounded at 5 seconds. The SDK sends the failed retry's raw body so the app can distinguish recurrence from a newly revealed issue. It does not assert `succeeded` or `failed` itself.
+
+## Runtime behavior
+
+All supported clients share the same capture, planning, outcome, and callback flow.
+Raw curl uses that flow without a replay sender and closes any served attempt as
+`not_attempted`. `onHeal` receives a masked URL and the result after each captured
+failure; callback exceptions are logged and cannot escape into application code.
+Manifest API answers are read with a 1 MB limit.
+
+PHPUnit and Pest are silent by default, including standard runner commands loaded
+through `auto_prepend_file`. `MNFST_IN_TESTS=1` explicitly enables integration-test
+capture. Repeated installation refreshes configuration without duplicate hooks or
+warnings. Clearing the key disables existing hooks as well as new installations.

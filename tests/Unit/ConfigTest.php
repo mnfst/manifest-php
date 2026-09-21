@@ -11,12 +11,43 @@ final class ConfigTest extends TestCase
     {
         putenv('MNFST_KEY');
         putenv('MNFST_URL');
+        unset($_ENV['MNFST_KEY'], $_ENV['MNFST_URL'], $_SERVER['MNFST_KEY'], $_SERVER['MNFST_URL']);
+    }
+
+    public function testAKeyLoadedByAFrameworkDotenvIsFound(): void
+    {
+        // Laravel and Symfony fill $_ENV and $_SERVER from .env and never call putenv().
+        $_ENV['MNFST_KEY'] = 'from-dotenv';
+        self::assertSame('from-dotenv', Config::resolve()->apiKey);
+        unset($_ENV['MNFST_KEY']);
+
+        $_SERVER['MNFST_URL'] = 'https://server.test/';
+        self::assertSame('https://server.test', Config::resolve()->baseUrl);
+    }
+
+    public function testAnEmptyValueCountsAsUnset(): void
+    {
+        $_ENV['MNFST_KEY'] = '';
+        putenv('MNFST_KEY=');
+        self::assertNull(Config::resolve()->apiKey);
+        self::assertNull(Config::resolve('')->apiKey, 'config() hands over an empty string for a blanked variable');
+        self::assertNull(Config::resolve(' ')->apiKey);
+        self::assertSame(Config::HOSTED_URL, Config::resolve(null, '')->baseUrl);
     }
 
     public function testArgumentBeatsEnvironment(): void
     {
         putenv('MNFST_KEY=from-env');
         self::assertSame('from-arg', Config::resolve('from-arg')->apiKey);
+        self::assertNull(Config::resolve('')->apiKey, 'an explicit empty key must never fall back to a live environment key');
+        self::assertNull(Config::resolve(' ')->apiKey);
+    }
+
+    public function testAnExplicitlyBlankEnvironmentValueOverridesLowerPrioritySources(): void
+    {
+        putenv('MNFST_KEY=live-key');
+        $_SERVER['MNFST_KEY'] = '';
+        self::assertNull(Config::resolve()->apiKey);
     }
 
     public function testEnvironmentBeatsDefault(): void

@@ -31,7 +31,8 @@ final class MergeTest extends TestCase
 
     public function testAHealedEmptyObjectStaysAnObject(): void
     {
-        self::assertSame('{}', json_encode(Merge::healedBody(['a' => 1], ['a' => 1], [])));
+        self::assertSame('{}', json_encode(Merge::healedBody(['a' => 1], ['a' => 1], new \stdClass())));
+        self::assertSame([], Merge::healedBody(['a' => 1], ['a' => 1], []));
     }
 
     public function testNonObjectBodiesAreReplacedWholesale(): void

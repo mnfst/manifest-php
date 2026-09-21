@@ -44,7 +44,7 @@ final class ReplayTest extends TestCase
 
     public function testNeverPutsTheMaskOnTheWire(): void
     {
-        $plan = Replay::plan('POST', self::URL, ['limit' => 500], true, Bodies::JSON, self::served(['headers' => ['authorization' => 'REDACTED', 'x-limit' => '1']]));
+        $plan = Replay::plan('POST', self::URL, ['limit' => 500], true, Bodies::JSON, self::served(['headers' => ['authorization' => 'REDACTED', 'x-limit' => '1']]), ['Authorization' => ['Bearer local']]);
         self::assertSame(['x-limit' => '1'], $plan['headers']);
     }
 
@@ -87,5 +87,42 @@ final class ReplayTest extends TestCase
     {
         self::assertNull(Replay::plan('POST', self::URL, ['limit' => 500], true, Bodies::JSON, self::served(['headers' => ['x' => 1]])));
         self::assertNull(Replay::plan('POST', self::URL, ['limit' => 500], true, Bodies::JSON, self::served(['headers' => 'nope'])));
+    }
+
+    public function testEmptyHeaderObjectDoesNotBlockAReplay(): void
+    {
+        self::assertNotNull(Replay::plan('GET', self::URL, null, true, '', self::served(['headers' => new \stdClass()])));
+    }
+
+    public function testQueryMasksRestoreDuplicateCredentialsInOrder(): void
+    {
+        $plan = Replay::plan('GET', 'https://a.test/?api_key=first&api_key=second', null, true, '',
+            self::served(['url' => 'https://a.test/?api_key=%52EDACTED&api_key=REDACTED']));
+        self::assertSame('https://a.test/?api_key=first&api_key=second', $plan['url']);
+    }
+
+    public function testMissingCredentialsAreReattachedWithoutCollapsingDuplicates(): void
+    {
+        $plan = Replay::plan('GET', 'https://a.test/?api_key=first&api_key=second', null, true, '',
+            self::served(['url' => 'https://a.test/?page=1']));
+        self::assertSame('https://a.test/?page=1&api_key=first&api_key=second', $plan['url']);
+    }
+
+    public function testUnrestorableMasksAbandonTheRetry(): void
+    {
+        foreach ([
+            ['url' => 'https://a.test/?api_key=REDACTED'],
+            ['headers' => ['Authorization' => 'REDACTED']],
+            ['headers' => ['X-Test' => "bad\r\nInjected: value"]],
+        ] as $healed) {
+            self::assertNull(Replay::plan('GET', self::URL, null, true, '', self::served($healed)));
+        }
+    }
+
+    public function testDefaultPortIsTheSameOrigin(): void
+    {
+        self::assertNotNull(Replay::plan('GET', self::URL, null, true, '', self::served(['url' => 'https://a.test:443/'])));
+        self::assertNull(Replay::plan('GET', self::URL, null, true, '', self::served(['url' => 'https://a.test:444/'])));
+        self::assertNull(Replay::plan('GET', self::URL, null, true, '', self::served(['url' => 'https://a.test/\evil'])));
     }
 }

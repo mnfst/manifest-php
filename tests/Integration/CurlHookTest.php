@@ -59,11 +59,30 @@ final class CurlHookTest extends TestCase
         self::assertStringContainsString('/orders', $heals[0]['request']['url']);
     }
 
-    public function testHeadersTravelAsAJsonObjectEvenWhenNoneAreKnown(): void
+    public function testHeadersTravelAsAJsonMap(): void
     {
         $this->post('/orders', ['limit' => 500]);
+
         [$raw] = $this->manifest->rawHeals();
-        self::assertStringContainsString('"headers":{}', $raw, 'the server rejects a JSON list where it expects a map');
+        self::assertStringContainsString(
+            '"headers":{"content-type":"application/json"}',
+            $raw,
+            'the headers the call set travel, as a map: the server rejects a JSON list where it expects one',
+        );
+    }
+
+    public function testHeadersTravelAsAnEmptyObjectWhenTheCallSetNone(): void
+    {
+        $ch = curl_init($this->upstream->url . '/orders');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode(['limit' => 500]),
+        ]);
+        curl_exec($ch);
+
+        [$raw] = $this->manifest->rawHeals();
+        self::assertStringContainsString('"headers":{}', $raw, 'never [] — the server expects a map');
     }
 
     public function testTheRequestAndResponseBodiesTravel(): void
@@ -83,16 +102,65 @@ final class CurlHookTest extends TestCase
         self::assertStringContainsString('too big', $raw);
     }
 
-    public function testNoHealAttemptIsOpened(): void
+    public function testAnAttemptTheServerOpensIsClosedAsNotAttempted(): void
     {
+        // The payload does not say the capture came from raw curl, so the
+        // server may open an attempt like for any other capture. Nothing is
+        // replayed; the attempt must not wait forever for an answer.
         $this->manifest->setResult([
             'status' => 'patched',
             'healAttemptId' => 'a1',
             'healedRequest' => ['body' => ['limit' => 100]],
         ]);
-        $this->post('/orders', ['limit' => 500]);
+        [$status] = $this->post('/orders', ['limit' => 500]);
 
-        self::assertSame([], $this->manifest->outcomes(), 'nothing was replayed, so nothing is adjudicated');
+        self::assertSame(400, $status, 'raw curl is never healed');
+        self::assertSame(
+            [['a1', ['failure' => ['kind' => 'not_attempted', 'message' => 'replay_not_attempted']]]],
+            $this->manifest->outcomes(),
+        );
+    }
+
+    public function testTheRequestHeadersTravelMasked(): void
+    {
+        $ch = curl_init($this->upstream->url . '/orders');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode(['limit' => 500]),
+        ]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Authorization: Bearer app-secret', 'X-Trace: t1']);
+        curl_exec($ch);
+
+        $sent = $this->manifest->heals()[0]['request']['headers'];
+        self::assertSame('application/json', $sent['content-type']);
+        self::assertSame('REDACTED', $sent['authorization']);
+        self::assertSame('t1', $sent['x-trace']);
+    }
+
+    public function testReusedAndCopiedHandlesKeepTheirRequestMetadata(): void
+    {
+        $handle = curl_init($this->upstream->url.'/orders');
+        curl_setopt_array($handle, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POSTFIELDS => '{"limit":500}',
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'X-Trace: kept'],
+        ]);
+        curl_exec($handle);
+        curl_exec($handle);
+        $copy = curl_copy_handle($handle);
+        curl_exec($copy);
+        self::assertCount(3, $this->manifest->heals());
+        foreach ($this->manifest->heals() as $heal) {
+            self::assertSame(['limit' => 500], $heal['request']['body']);
+            self::assertSame('kept', $heal['request']['headers']['x-trace']);
+        }
+
+        curl_reset($handle);
+        curl_setopt_array($handle, [CURLOPT_URL => $this->upstream->url.'/orders?limit=500', CURLOPT_RETURNTRANSFER => true]);
+        curl_exec($handle);
+        $last = $this->manifest->heals()[3]['request'];
+        self::assertNull($last['body']);
+        self::assertSame([], $last['headers']);
     }
 
     public function testASuccessIsNotCaptured(): void
@@ -106,6 +174,21 @@ final class CurlHookTest extends TestCase
         $this->post('/orders', ['limit' => 500]);
         // the SDK's own POST /v1/heal is itself a curl_exec; it must not recurse
         self::assertCount(1, $this->manifest->heals());
+    }
+
+    public function testWordPressTrafficIsLeftToTheRequestsHook(): void
+    {
+        // Requests' curl transport uses curl_exec; the curl hook must defer to
+        // the WordPress hook so a WP call is captured once, not twice.
+        \Mnfst\Hooks\WordPress::install(
+            \Mnfst\Config::resolve('k', $this->manifest->url),
+            new \Mnfst\HealApi(\Mnfst\Config::resolve('k', $this->manifest->url)),
+        );
+        $this->manifest->setResult(['status' => 'no_patch']);
+
+        \WpOrg\Requests\Requests::post($this->upstream->url . '/orders', ['Content-Type' => 'application/json'], json_encode(['limit' => 500]));
+
+        self::assertCount(1, $this->manifest->heals(), 'the WordPress hook captures it; the curl hook defers');
     }
 
     public function testGuzzleTrafficIsLeftToTheGuzzleHook(): void
