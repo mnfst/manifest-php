@@ -36,6 +36,16 @@ final class Wire
         'passwd', 'cookie', 'signature', 'credential', 'bearer', 'jwt',
     ];
 
+    /**
+     * A name that ENDS with one of these carries a credential too: guest_session_id,
+     * stripe_api_key, user_password. Suffixes only, so page_token or csrf stay visible
+     * to the server that has to repair them.
+     */
+    private const SECRET_SUFFIXES = [
+        'api_key', 'session_id', 'access_token', 'refresh_token', 'auth_token', 'id_token',
+        'client_secret', 'private_key', 'secret', 'password', 'passwd',
+    ];
+
     /** X-Api-Key, apiKey and api_key are all the same secret. */
     private static function normalize(string $name): string
     {
@@ -47,7 +57,20 @@ final class Wire
 
     public static function isSecretField(mixed $name): bool
     {
-        return is_string($name) && in_array(self::normalize($name), self::SECRET_PARAMS, true);
+        if (!is_string($name)) {
+            return false;
+        }
+        $normalized = self::normalize($name);
+        if (in_array($normalized, self::SECRET_PARAMS, true)) {
+            return true;
+        }
+        foreach (self::SECRET_SUFFIXES as $suffix) {
+            if (str_ends_with($normalized, '_' . $suffix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function isSecretHeader(string $name): bool
@@ -65,6 +88,12 @@ final class Wire
         return false;
     }
 
+    /**
+     * The URL as it went on the wire, minus credential values. The query is
+     * handled pair by pair, never through parse_str(): that would collapse a
+     * duplicated key (`page=1&page=2`, the very thing some APIs reject) and
+     * rewrite `a.b` as `a_b`, and the server can only repair what it sees.
+     */
     public static function safeUrl(string $url): string
     {
         $parts = parse_url($url);
@@ -74,13 +103,15 @@ final class Wire
 
         $query = '';
         if (isset($parts['query']) && $parts['query'] !== '') {
-            parse_str($parts['query'], $pairs);
-            foreach ($pairs as $name => $value) {
-                if (self::isSecretField($name)) {
-                    $pairs[$name] = 'REDACTED';
+            $masked = [];
+            foreach (self::queryPairs($parts['query']) as [$name, $value]) {
+                if ($value === null) {
+                    $masked[] = $name;
+                    continue;
                 }
+                $masked[] = $name . '=' . (self::isSecretField(urldecode($name)) ? 'REDACTED' : $value);
             }
-            $query = '?' . http_build_query($pairs);
+            $query = '?' . implode('&', $masked);
         }
 
         // user:password@host is a credential too — keep host[:port] only.
@@ -89,6 +120,26 @@ final class Wire
         $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
 
         return $scheme . $host . $port . ($parts['path'] ?? '') . $query;
+    }
+
+    /**
+     * A query string as raw `[name, value]` pairs in wire order, duplicates
+     * kept, nothing decoded. A value is null for a bare `flag` segment.
+     *
+     * @return list<array{0: string, 1: string|null}>
+     */
+    public static function queryPairs(string $query): array
+    {
+        $pairs = [];
+        foreach (explode('&', $query) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            $split = explode('=', $segment, 2);
+            $pairs[] = [$split[0], $split[1] ?? null];
+        }
+
+        return $pairs;
     }
 
     /** Every header travels, lowercased; credential values are masked. */
@@ -116,28 +167,54 @@ final class Wire
      */
     public static function travelingBody(mixed $body): mixed
     {
-        if (!is_array($body) || array_is_list($body)) {
+        if (!$body instanceof \stdClass && (!is_array($body) || array_is_list($body))) {
             return $body;
         }
 
-        return array_filter(
-            $body,
+        $filtered = array_filter(
+            (array) $body,
             static fn (string|int $key): bool => !self::isSecretField($key),
             ARRAY_FILTER_USE_KEY,
         );
+
+        return array_is_list($filtered) ? (object) $filtered : $filtered;
     }
 
     /** @return array{0: mixed, 1: bool} the body and whether it was truncated */
     public static function cappedResponseBody(string $raw): array
     {
         $truncated = strlen($raw) > self::RESPONSE_BODY_CAP;
-        $raw = substr($raw, 0, self::RESPONSE_BODY_CAP);
+        if ($truncated) {
+            $raw = self::cutUtf8($raw, self::RESPONSE_BODY_CAP);
+        }
 
         try {
-            return [json_decode($raw, true, 64, JSON_THROW_ON_ERROR), $truncated];
+            return [Json::decode($raw), $truncated];
         } catch (\Throwable) {
             return [$raw, $truncated];
         }
+    }
+
+    /**
+     * The first $cap bytes, minus a multibyte character the cut would split:
+     * a broken sequence makes the whole heal payload invalid UTF-8.
+     */
+    public static function cutUtf8(string $raw, int $cap): string
+    {
+        $cut = substr($raw, 0, $cap);
+        $last = strlen($cut) - 1;
+        $continuation = 0;
+        while ($last >= 0 && (ord($cut[$last]) & 0xC0) === 0x80) {
+            $last--;
+            $continuation++;
+        }
+        if ($last < 0) {
+            return $cut;
+        }
+        $lead = ord($cut[$last]);
+        $expected = $lead >= 0xF0 ? 3 : ($lead >= 0xE0 ? 2 : ($lead >= 0xC0 ? 1 : 0));
+
+        return $expected > $continuation ? substr($cut, 0, $last) : $cut;
     }
 
     public static function healPayload(

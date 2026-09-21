@@ -4,6 +4,7 @@
   "type": "library",
   "license": "MIT",
   "require": {
+    "ext-curl": "*",
     "php": "^8.2",
     "psr/http-message": "^1.1 || ^2.0"
   },
@@ -11,9 +12,12 @@
     "ext-opentelemetry": "Required to hook HTTP clients; without it the SDK instruments nothing (pecl install opentelemetry)"
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.0",
+    "cakephp/http": "^5.0",
     "guzzlehttp/guzzle": "^7.5 || ^8.0",
-    "cakephp/http": "^5.0"
+    "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+    "phpunit/phpunit": "^11.0",
+    "rmccue/requests": "^2.0",
+    "symfony/http-client": "^6.4 || ^7.0 || ^8.0"
   },
   "autoload": {
     "psr-4": { "Mnfst\\": "src/" },

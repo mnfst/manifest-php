@@ -32,6 +32,9 @@ final class Bodies
         if ($raw === null || $raw === '') {
             return [null, true];
         }
+        if (strlen($raw) > Gate::REQUEST_BODY_LIMIT) {
+            return [null, false];
+        }
 
         if (str_contains($contentType, 'json') || $contentType === '') {
             $parsed = Gate::parseJsonBody($raw);
@@ -52,7 +55,7 @@ final class Bodies
      * reinterprets brackets, so a replay would rename the caller's fields. A
      * name is kept verbatim; a repeated name becomes a list.
      */
-    public static function parseForm(string $raw): array
+    public static function parseForm(string $raw): array|\stdClass
     {
         $out = [];
         foreach (explode('&', $raw) as $pair) {
@@ -71,7 +74,7 @@ final class Bodies
             }
         }
 
-        return $out;
+        return array_is_list($out) ? (object) $out : $out;
     }
 
     /** The inverse of parseForm; null when a value cannot be expressed as a form field. */
@@ -102,6 +105,9 @@ final class Bodies
     public static function encodeRequestBody(mixed $body, string $contentType): ?string
     {
         if ($contentType === self::FORM) {
+            if ($body instanceof \stdClass) {
+                return self::encodeForm((array) $body);
+            }
             if (!is_array($body) || array_is_list($body)) {
                 return null;
             }
@@ -110,7 +116,9 @@ final class Bodies
         }
 
         try {
-            return json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            // PRESERVE_ZERO_FRACTION: without it a float literal the caller sent as
+            // 10.0 goes back on the wire as 10, and strict APIs reject the type change.
+            return json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
         } catch (\Throwable) {
             return null;
         }

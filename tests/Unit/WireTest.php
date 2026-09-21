@@ -16,6 +16,33 @@ final class WireTest extends TestCase
         self::assertStringNotContainsString('sk_live_123', $out);
     }
 
+    public function testKeepsTheQueryAsItWentOnTheWire(): void
+    {
+        $url = 'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=sk_1';
+        self::assertSame(
+            'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=REDACTED',
+            Wire::safeUrl($url),
+        );
+    }
+
+    public function testMasksNamesThatEndWithACredentialWord(): void
+    {
+        foreach (['guest_session_id', 'stripe_api_key', 'userPassword', 'X-Client-Secret'] as $name) {
+            self::assertTrue(Wire::isSecretField($name), "$name must be secret");
+        }
+        foreach (['page_token', 'session_count', 'keyword', 'limit'] as $name) {
+            self::assertFalse(Wire::isSecretField($name), "$name must travel");
+        }
+    }
+
+    public function testSplitsAQueryIntoRawPairs(): void
+    {
+        self::assertSame(
+            [['a', '1'], ['a', '2'], ['b', ''], ['c', null], ['d', 'x=y']],
+            Wire::queryPairs('a=1&a=2&b=&c&&d=x=y'),
+        );
+    }
+
     public function testStripsUserInfoFromTheUrl(): void
     {
         self::assertSame('https://api.test/x', Wire::safeUrl('https://user:pw@api.test/x'));
@@ -55,6 +82,22 @@ final class WireTest extends TestCase
         [$text, $wasTruncated] = Wire::cappedResponseBody(str_repeat('a', 70000));
         self::assertTrue($wasTruncated);
         self::assertSame(65536, strlen($text));
+    }
+
+    public function testTheCapNeverSplitsAMultibyteCharacter(): void
+    {
+        // 7-byte prefix + 2-byte characters: a plain byte cut would end mid-character.
+        $raw = '{"ee":"' . str_repeat("\xC3\xA9", 40000) . '"}';
+        [$body, $truncated] = Wire::cappedResponseBody($raw);
+
+        self::assertTrue($truncated);
+        self::assertTrue(mb_check_encoding($body, 'UTF-8'));
+        self::assertSame(65535, strlen($body));
+
+        self::assertSame("ab\xE2\x82\xAC", Wire::cutUtf8("ab\xE2\x82\xACcd", 5));
+        self::assertSame('ab', Wire::cutUtf8("ab\xE2\x82\xACcd", 4), 'a 3-byte sequence cut after 2 bytes is dropped');
+        self::assertSame("\xF0\x9F\x98\x80", Wire::cutUtf8("\xF0\x9F\x98\x80\xF0\x9F\x98\x80", 6));
+        self::assertSame('abc', Wire::cutUtf8('abcdef', 3));
     }
 
     public function testEmptyHeadersTravelAsAJsonObject(): void

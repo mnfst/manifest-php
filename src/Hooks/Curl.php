@@ -2,89 +2,96 @@
 
 namespace Mnfst\Hooks;
 
+use Mnfst\Capture;
 use Mnfst\Config;
 use Mnfst\Gate;
 use Mnfst\HealApi;
+use Mnfst\Healer;
 use Mnfst\Wire;
 
 use function OpenTelemetry\Instrumentation\hook;
 
-/**
- * Observe raw curl_exec traffic. Capture only — never heal.
- *
- * The extension can observe an internal function but cannot replace its return
- * value, verified against strtoupper and against the real stripe/stripe-php
- * package. So a library with its own curl client gets its failures recorded in
- * the dashboard while the application keeps the original error. This is a
- * permanent limit of PHP, not a temporary one.
- *
- * Because it cannot replay, this hook reports no outcome and the server should
- * never open an attempt for it.
- */
+/** Raw curl is capture-only: the extension cannot replace an internal function's return value. */
 final class Curl
 {
     private static bool $installed = false;
+    private static ?Healer $healer = null;
 
-    /** @var array{config: Config, api: HealApi}|null */
-    private static ?array $deps = null;
-
-    /** @var array<int, string> the request body per curl handle, keyed by object id */
-    private static array $bodies = [];
+    /** @var \WeakMap<\CurlHandle, array{body: ?string, oversized: bool, headers: array<string, list<string>>}> */
+    private static ?\WeakMap $requests = null;
 
     public static function install(Config $config, HealApi $api): bool
     {
-        if (!function_exists('OpenTelemetry\Instrumentation\hook')) {
+        if (!function_exists('curl_exec') || !function_exists('OpenTelemetry\Instrumentation\hook')) {
             return false;
         }
-        self::$deps = ['config' => $config, 'api' => $api];
+        self::$healer = new Healer($config, $api);
+        self::$requests ??= new \WeakMap();
         if (self::$installed) {
             return false;
         }
         self::$installed = true;
 
-        // curl_exec alone cannot show the request body, so record it as it is
-        // set. Both setters must be hooked: curl_setopt_array does not call
-        // curl_setopt.
-        hook(null, 'curl_setopt', pre: static function (mixed $obj, array $params) {
-            if (($params[1] ?? null) === CURLOPT_POSTFIELDS) {
-                self::remember($params[0] ?? null, $params[2] ?? null);
+        hook(null, 'curl_setopt', post: static function (mixed $obj, array $params, mixed $result): void {
+            if ($result === true) {
+                self::remember($params[0] ?? null, [$params[1] => $params[2]]);
             }
         });
-
-        hook(null, 'curl_setopt_array', pre: static function (mixed $obj, array $params) {
-            $options = $params[1] ?? null;
-            if (is_array($options) && array_key_exists(CURLOPT_POSTFIELDS, $options)) {
-                self::remember($params[0] ?? null, $options[CURLOPT_POSTFIELDS]);
+        hook(null, 'curl_setopt_array', post: static function (mixed $obj, array $params, mixed $result): void {
+            if ($result === true) {
+                self::remember($params[0] ?? null, $params[1] ?? []);
             }
         });
-
-        hook(null, 'curl_exec', post: static function (mixed $obj, array $params, mixed $result, ?\Throwable $e) {
+        hook(null, 'curl_copy_handle', post: static function (mixed $obj, array $params, mixed $copy): void {
+            if ($copy instanceof \CurlHandle && isset(self::$requests[$params[0]])) {
+                self::$requests[$copy] = self::$requests[$params[0]];
+            }
+        });
+        hook(null, 'curl_reset', post: static function (mixed $obj, array $params): void {
+            $handle = $params[0] ?? null;
+            if ($handle instanceof \CurlHandle && self::$requests !== null) {
+                self::$requests->offsetUnset($handle);
+            }
+        });
+        hook(null, 'curl_exec', post: static function (mixed $obj, array $params, mixed $result): void {
             self::observe($params[0] ?? null, $result);
         });
 
         return true;
     }
 
-    private static function remember(mixed $handle, mixed $body): void
+    private static function remember(mixed $handle, array $options): void
     {
-        if (is_object($handle) && is_string($body)) {
-            self::$bodies[spl_object_id($handle)] = $body;
+        if (!$handle instanceof \CurlHandle || HealApi::isInternalCall()) {
+            return;
         }
+        $request = self::$requests[$handle] ?? ['body' => null, 'oversized' => false, 'headers' => []];
+        if (array_key_exists(CURLOPT_POSTFIELDS, $options)) {
+            $body = $options[CURLOPT_POSTFIELDS];
+            $request['oversized'] = !is_string($body) || strlen($body) > Gate::REQUEST_BODY_LIMIT;
+            $request['body'] = $request['oversized'] ? null : $body;
+        }
+        if (array_key_exists(CURLOPT_HTTPHEADER, $options)) {
+            $request['headers'] = [];
+            foreach ((array) $options[CURLOPT_HTTPHEADER] as $line) {
+                if (is_string($line) && str_contains($line, ':')) {
+                    [$name, $value] = explode(':', $line, 2);
+                    $request['headers'][trim($name)] = [trim($value)];
+                }
+            }
+        }
+        self::$requests[$handle] = $request;
     }
 
-    /**
-     * Guzzle and CakePHP both run on curl underneath, so without this the same
-     * failure is reported twice: once by the client's own hook, which heals it,
-     * and again here, which cannot. Only the client's hook should report it.
-     *
-     * The walk is bounded and only runs on a captured 4xx, which is rare.
-     */
+    /** The higher-level hook owns these calls, preventing duplicate captures. */
     private static function ownedByAManagedClient(): bool
     {
-        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 16) as $frame) {
+        foreach (debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 32) as $frame) {
             $class = $frame['class'] ?? '';
-            if (str_starts_with($class, 'GuzzleHttp\\') || str_starts_with($class, 'Cake\\Http\\Client')) {
-                return true;
+            foreach (['GuzzleHttp\\', 'Cake\\Http\\Client', 'Symfony\\Component\\HttpClient', 'WpOrg\\Requests'] as $managed) {
+                if (str_starts_with($class, $managed)) {
+                    return true;
+                }
             }
         }
 
@@ -94,41 +101,26 @@ final class Curl
     private static function observe(mixed $handle, mixed $result): void
     {
         try {
-            if (!is_object($handle) || self::$deps === null || HealApi::isInternalCall()) {
+            if (!$handle instanceof \CurlHandle || self::$healer === null || HealApi::isInternalCall()) {
                 return;
             }
             $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
             if (!Gate::shouldCapture($status) || self::ownedByAManagedClient()) {
                 return;
             }
-
-            $raw = self::$bodies[spl_object_id($handle)] ?? null;
-            $body = $raw === null ? null : Gate::parseJsonBody($raw);
-
-            // curl_exec's return value IS the response body when
-            // CURLOPT_RETURNTRANSFER is set. When it is not, the body went
-            // straight to output and only the status is available.
-            [$responseBody, $truncated] = is_string($result)
-                ? Wire::cappedResponseBody($result)
-                : [null, false];
-
-            self::$deps['api']->heal(Wire::healPayload(
-                bin2hex(random_bytes(16)),
+            $request = self::$requests[$handle] ?? ['body' => null, 'oversized' => false, 'headers' => []];
+            self::$healer->attempt(new Capture(
                 (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_METHOD) ?: 'GET'),
                 (string) curl_getinfo($handle, CURLINFO_EFFECTIVE_URL),
-                [],
-                $body,
+                $request['headers'],
+                $request['body'],
+                $request['oversized'],
                 $status,
-                $responseBody,
-                $truncated,
-                (int) round(((float) curl_getinfo($handle, CURLINFO_TOTAL_TIME)) * 1000),
-            ));
+                is_string($result) ? substr($result, 0, Wire::RESPONSE_BODY_CAP + 1) : '',
+                microtime(true) - (float) curl_getinfo($handle, CURLINFO_TOTAL_TIME),
+            ), null);
         } catch (\Throwable) {
-            // observation must never affect the caller
-        } finally {
-            if (is_object($handle)) {
-                unset(self::$bodies[spl_object_id($handle)]);
-            }
+            // Observation must never affect the caller.
         }
     }
 }

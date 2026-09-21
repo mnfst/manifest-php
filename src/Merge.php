@@ -12,32 +12,38 @@ namespace Mnfst;
  * Anything else (lists, scalars, a body that changed type) is replaced
  * wholesale.
  *
- * A healed `{}` decodes to [] and is indistinguishable from an empty list, so
- * against an object original it is read as an empty object, and an object
- * that merges to nothing is returned as stdClass so it encodes as `{}`.
+ * Json preserves objects and lists, including empty ones. An object that
+ * merges to nothing is returned as stdClass so it encodes as `{}`.
  */
 final class Merge
 {
     public static function healedBody(mixed $original, mixed $traveled, mixed $healed): mixed
     {
-        if (!self::isObject($original) || (!self::isObject($healed) && $healed !== [])) {
+        if (!self::isObject($original) || !self::isObject($healed)) {
             return $healed;
         }
 
-        $merged = $healed;
-        $traveledKeys = self::isObject($traveled) ? $traveled : [];
+        $merged = self::keys($healed);
+        $traveledKeys = self::isObject($traveled) ? self::keys($traveled) : [];
 
-        foreach ($original as $key => $value) {
+        foreach (self::keys($original) as $key => $value) {
             if (!array_key_exists($key, $traveledKeys) && !array_key_exists($key, $merged)) {
                 $merged[$key] = $value;
             }
         }
 
-        return $merged === [] ? new \stdClass() : $merged;
+        return array_is_list($merged) ? (object) $merged : $merged;
     }
 
+    /** JSON objects use associative arrays or stdClass when array keys would imply a list. */
     private static function isObject(mixed $value): bool
     {
-        return is_array($value) && !array_is_list($value);
+        return (is_array($value) && !array_is_list($value)) || $value instanceof \stdClass;
+    }
+
+    /** @return array<string|int, mixed> */
+    private static function keys(mixed $object): array
+    {
+        return (array) $object;
     }
 }

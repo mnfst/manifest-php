@@ -28,6 +28,36 @@ final class BodiesTest extends TestCase
         self::assertTrue($replayable);
     }
 
+    public function testFormKeysTravelVerbatim(): void
+    {
+        [$body] = Bodies::parseRequestBody('user.name=bob&a%20b=1&q=fight+club', Bodies::FORM);
+        self::assertSame(['user.name' => 'bob', 'a b' => '1', 'q' => 'fight club'], $body, 'parse_str would have made user_name and a_b');
+        self::assertSame('user.name=bob&a+b=1&q=fight+club', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testARepeatedFormKeyBecomesAList(): void
+    {
+        [$body] = Bodies::parseRequestBody('tag=a&tag=b&tag=c', Bodies::FORM);
+        self::assertSame(['tag' => ['a', 'b', 'c']], $body, 'parse_str kept only the last value');
+        self::assertSame('tag=a&tag=b&tag=c', Bodies::encodeRequestBody($body, Bodies::FORM), 'a repeated name is repeated, so it round-trips');
+    }
+
+    public function testBracketNamesStayLiteral(): void
+    {
+        // A bracketed name is one field name, not a path: the server sees what
+        // the caller sent, and the retry sends it back unchanged.
+        [$body] = Bodies::parseRequestBody('u[name]=x&m[3]=three', Bodies::FORM);
+        self::assertSame(['u[name]' => 'x', 'm[3]' => 'three'], $body);
+        self::assertSame('u%5Bname%5D=x&m%5B3%5D=three', Bodies::encodeRequestBody($body, Bodies::FORM));
+    }
+
+    public function testFormValuesEncodeAsScalars(): void
+    {
+        $encoded = Bodies::encodeRequestBody(['on' => true, 'off' => false, 'none' => null, 'n' => 1.5], Bodies::FORM);
+        self::assertSame('on=1&off=0&none=&n=1.5', $encoded, 'scalars are cast the way PHP encodes a form');
+        self::assertNull(Bodies::encodeRequestBody(['nested' => ['a' => 1]], Bodies::FORM), 'a nested structure is not a form field');
+    }
+
     public function testUnparseableBytesAreReportedButNotReplayable(): void
     {
         [$body, $replayable] = Bodies::parseRequestBody("\x00\x01binary", 'application/octet-stream');

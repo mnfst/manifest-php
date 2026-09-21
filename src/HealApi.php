@@ -19,11 +19,14 @@ final class HealApi
     /** The server's cap on a failure message, in UTF-8 bytes. */
     public const FAILURE_MESSAGE_CAP = 512;
 
+    /** A disabled project or a rejected key: nothing will change for a while. */
     private const DISABLED_BACKOFF_SECONDS = 300;
+
+    /** A server that timed out, failed or could not be reached: try again soon, not on the very next failure. */
+    private const UNREACHABLE_BACKOFF_SECONDS = 60;
     private const MAX_HEAL_RESPONSE = 1048576;
 
     private static bool $internalCall = false;
-    private float $disabledUntil = 0.0;
 
     public function __construct(private readonly Config $config)
     {
@@ -46,9 +49,34 @@ final class HealApi
         }
     }
 
+    /**
+     * PHP keeps nothing between requests, so the backoff lives in a marker file
+     * whose mtime is the deadline (like the handshake marker). Held in memory it
+     * would be forgotten immediately: every php-fpm worker would learn the
+     * project is disabled on its own failing request, and a hanging server would
+     * cost the heal timeout on every failure instead of once a minute.
+     */
+    public function backoffPath(): string
+    {
+        $fingerprint = substr(hash('sha256', $this->config->baseUrl . '|' . ($this->config->apiKey ?? '')), 0, 16);
+
+        return sys_get_temp_dir() . '/mnfst-backoff-' . $fingerprint;
+    }
+
     public function healingEnabled(): bool
     {
-        return $this->config->apiKey !== null && microtime(true) >= $this->disabledUntil;
+        if ($this->config->apiKey === null) {
+            return false;
+        }
+        clearstatcache(true, $this->backoffPath());
+        $deadline = @filemtime($this->backoffPath());
+
+        return $deadline === false || $deadline <= time();
+    }
+
+    private function backOff(int $seconds): void
+    {
+        @touch($this->backoffPath(), time() + $seconds);
     }
 
     public function heal(array $payload): ?array
@@ -59,13 +87,21 @@ final class HealApi
 
         $response = $this->send('POST', '/v1/heal', $payload, Config::HEAL_TIMEOUT_SECONDS);
         if ($response === null) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
+
             return null;
         }
 
         [$status, $raw] = $response;
 
-        if ($status === 403 && $this->isProjectDisabled($raw)) {
-            $this->disabledUntil = microtime(true) + self::DISABLED_BACKOFF_SECONDS;
+        if (($status === 403 && $this->isProjectDisabled($raw)) || $status === 401) {
+            $this->backOff(self::DISABLED_BACKOFF_SECONDS);
+
+            return null;
+        }
+
+        if ($status >= 500) {
+            $this->backOff(self::UNREACHABLE_BACKOFF_SECONDS);
 
             return null;
         }
@@ -74,7 +110,13 @@ final class HealApi
             return null;
         }
 
-        $decoded = json_decode($raw, true);
+        try {
+            // Json::decode so a healed body's {} survives as an object; a plain
+            // associative decode would hand the retry a [] and change the type.
+            $decoded = Json::decode($raw);
+        } catch (\Throwable) {
+            return null;
+        }
 
         return is_array($decoded) ? $decoded : null;
     }
@@ -109,7 +151,7 @@ final class HealApi
             $message,
         ) ?? $message;
 
-        return mb_strcut($masked, 0, self::FAILURE_MESSAGE_CAP, 'UTF-8');
+        return Wire::cutUtf8($masked, self::FAILURE_MESSAGE_CAP);
     }
 
     private function report(string $healAttemptId, array $body): void
@@ -123,31 +165,52 @@ final class HealApi
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
     private function send(string $method, string $path, array $body, int $timeout): ?array
     {
-        $headers = [
-            'Content-Type: application/json',
-            'User-Agent: mnfst-php/' . Manifest::VERSION,
-            'Authorization: Bearer ' . $this->config->apiKey,
-        ];
+        try {
+            $headers = [
+                'Content-Type: application/json',
+                'User-Agent: mnfst-php/' . Manifest::VERSION,
+                'Authorization: Bearer ' . $this->config->apiKey,
+            ];
 
-        return self::withInternalCall(function () use ($method, $path, $body, $timeout, $headers): ?array {
-            $ch = curl_init($this->config->baseUrl . $path);
-            if ($ch === false) {
+            // An upstream error body is whatever bytes the server sent: Latin-1
+            // pages, binary, a cut multibyte character. Substituting the invalid
+            // bytes keeps the capture; json_encode returning false would have sent
+            // an empty payload and lost it.
+            $json = json_encode($body, Json::ENCODE_FLAGS | JSON_INVALID_UTF8_SUBSTITUTE);
+            if (!is_string($json)) {
                 return null;
             }
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_CUSTOMREQUEST => $method,
-                CURLOPT_POSTFIELDS => json_encode($body),
-                CURLOPT_HTTPHEADER => $headers,
-                CURLOPT_TIMEOUT => $timeout,
-                CURLOPT_CONNECTTIMEOUT => $timeout,
-                CURLOPT_FOLLOWLOCATION => false,
-            ]);
-            $raw = curl_exec($ch);
-            $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 
-            return is_string($raw) && $status > 0 ? [$status, $raw] : null;
-        });
+            return self::withInternalCall(function () use ($method, $path, $json, $timeout, $headers): ?array {
+                $ch = curl_init($this->config->baseUrl . $path);
+                if ($ch === false) {
+                    return null;
+                }
+                $raw = '';
+                curl_setopt_array($ch, [
+                    CURLOPT_WRITEFUNCTION => static function (mixed $handle, string $chunk) use (&$raw): int {
+                        if (strlen($raw) + strlen($chunk) > self::MAX_HEAL_RESPONSE) {
+                            return 0;
+                        }
+                        $raw .= $chunk;
+
+                        return strlen($chunk);
+                    },
+                    CURLOPT_CUSTOMREQUEST => $method,
+                    CURLOPT_POSTFIELDS => $json,
+                    CURLOPT_HTTPHEADER => $headers,
+                    CURLOPT_TIMEOUT => $timeout,
+                    CURLOPT_CONNECTTIMEOUT => $timeout,
+                    CURLOPT_FOLLOWLOCATION => false,
+                ]);
+                $ok = curl_exec($ch);
+                $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+
+                return $ok !== false && $status > 0 ? [$status, $raw] : null;
+            });
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function isProjectDisabled(string $raw): bool
