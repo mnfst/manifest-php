@@ -13,10 +13,31 @@ namespace Mnfst;
  */
 final class Healer
 {
+    private readonly Tracking $tracking;
+
     public function __construct(
         private readonly Config $config,
         private readonly HealApi $api,
     ) {
+        $this->tracking = new Tracking($config, $api);
+    }
+
+    /**
+     * Whether a response with this status goes to /v1/heal right now. When it
+     * does not, the hook records the call with track() instead, so no call is
+     * lost from both ledgers.
+     */
+    public function willHeal(int $status): bool
+    {
+        return Manifest::captureEnabled() && Gate::shouldCapture($status) && $this->api->healingEnabled();
+    }
+
+    /** Record a call that is not being healed: metadata only, a local append (see Tracking). */
+    public function track(string $method, string $url, int $status, float $started): void
+    {
+        if (Manifest::captureEnabled()) {
+            $this->tracking->record($method, $url, $status, $started);
+        }
     }
 
     /**

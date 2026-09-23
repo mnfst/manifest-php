@@ -123,7 +123,12 @@ final class Guzzle
         callable $send,
         ?RequestInterface &$retried = null,
     ): ResponseInterface {
-        if (self::$healer === null || !Gate::shouldCapture($response->getStatusCode())) {
+        if (self::$healer === null) {
+            return $response;
+        }
+        if (!self::$healer->willHeal($response->getStatusCode())) {
+            self::$healer->track($request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), $started);
+
             return $response;
         }
         try {

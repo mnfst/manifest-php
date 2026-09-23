@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="2060" viewBox="0 0 1920 2060" font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+<rect width="1920" height="2060" fill="#ffffff"/>
+<text x="960" y="62" font-size="40" font-weight="600" text-anchor="middle" fill="#0f172a">SDK</text>
+<line x1="960" y1="100" x2="960" y2="186" stroke="#475569" stroke-width="4"/>
+<polygon points="960,218 943,184 977,184" fill="#475569"/>
+<rect x="110" y="228" width="380" height="116" rx="28" fill="#f1f5f9" stroke="#0f172a" stroke-width="4"/>
+<text x="300" y="300" font-size="44" font-weight="600" text-anchor="middle" fill="#0f172a">Manifest</text>
+<line x1="300" y1="344" x2="300" y2="2020" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="10 12"/>
+<rect x="770" y="228" width="380" height="116" rx="28" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+<text x="960" y="300" font-size="44" font-weight="600" text-anchor="middle" fill="#0f172a">App</text>
+<line x1="960" y1="344" x2="960" y2="2020" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="10 12"/>
+<rect x="1430" y="228" width="380" height="116" rx="28" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+<text x="1620" y="300" font-size="44" font-weight="600" text-anchor="middle" fill="#0f172a">API</text>
+<line x1="1620" y1="344" x2="1620" y2="2020" stroke="#cbd5e1" stroke-width="3" stroke-dasharray="10 12"/>
+<rect x="64" y="400" width="800" height="98" rx="10" fill="#ffffff"/><text x="80" y="440" font-size="30" font-weight="700" text-anchor="start" fill="#0f172a">Every call Manifest does not heal</text>
+<text x="80" y="480" font-size="26" font-weight="400" text-anchor="start" fill="#64748b">Any status: 2xx, 3xx, 401, 429, 5xx… Sent in the background</text>
+<text x="1290.0" y="564" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Send the API request</text>
+<circle cx="960" cy="590" r="28" fill="#0f172a"/>
+<text x="960" y="601" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">1</text>
+<line x1="1000" y1="590" x2="1546" y2="590" stroke="#475569" stroke-width="4"/>
+<polygon points="1580,590 1546,573 1546,607" fill="#475569"/>
+<text x="1290.0" y="704" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">The API answers</text>
+<circle cx="1620" cy="730" r="28" fill="#0f172a"/>
+<text x="1620" y="741" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">2</text>
+<line x1="1580" y1="730" x2="1034" y2="730" stroke="#475569" stroke-width="4"/>
+<polygon points="1000,730 1034,713 1034,747" fill="#475569"/>
+<text x="630.0" y="824" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Record the call: method, URL,</text>
+<text x="630.0" y="864" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">status, timing. Batched, no body</text>
+<circle cx="960" cy="890" r="28" fill="#0f172a"/>
+<text x="960" y="901" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">3</text>
+<line x1="920" y1="890" x2="374" y2="890" stroke="#475569" stroke-width="4" stroke-dasharray="14 10"/>
+<polygon points="340,890 374,873 374,907" fill="#475569"/>
+<line x1="60" y1="970" x2="1860" y2="970" stroke="#e2e8f0" stroke-width="3"/>
+<rect x="64" y="1000" width="800" height="98" rx="10" fill="#ffffff"/><text x="80" y="1040" font-size="30" font-weight="700" text-anchor="start" fill="#0f172a">A failure Manifest can heal</text>
+<text x="80" y="1080" font-size="26" font-weight="400" text-anchor="start" fill="#64748b">Any 4xx except 401, 402, 403 and 429, in real time</text>
+<text x="1290.0" y="1164" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Send the API request</text>
+<circle cx="960" cy="1190" r="28" fill="#0f172a"/>
+<text x="960" y="1201" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">4</text>
+<line x1="1000" y1="1190" x2="1546" y2="1190" stroke="#475569" stroke-width="4"/>
+<polygon points="1580,1190 1546,1173 1546,1207" fill="#475569"/>
+<text x="1290.0" y="1304" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">The request fails</text>
+<circle cx="1620" cy="1330" r="28" fill="#0f172a"/>
+<text x="1620" y="1341" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">5</text>
+<line x1="1580" y1="1330" x2="1034" y2="1330" stroke="#dc2626" stroke-width="4"/>
+<polygon points="1000,1330 1034,1313 1034,1347" fill="#dc2626"/>
+<text x="630.0" y="1424" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Send the failed request</text>
+<text x="630.0" y="1464" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">and error</text>
+<circle cx="960" cy="1490" r="28" fill="#0f172a"/>
+<text x="960" y="1501" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">6</text>
+<line x1="920" y1="1490" x2="374" y2="1490" stroke="#475569" stroke-width="4"/>
+<polygon points="340,1490 374,1473 374,1507" fill="#475569"/>
+<text x="630.0" y="1604" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Return a patch</text>
+<circle cx="300" cy="1630" r="28" fill="#0f172a"/>
+<text x="300" y="1641" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">7</text>
+<line x1="340" y1="1630" x2="886" y2="1630" stroke="#475569" stroke-width="4"/>
+<polygon points="920,1630 886,1613 886,1647" fill="#475569"/>
+<text x="1290.0" y="1744" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">Apply the patch and retry</text>
+<circle cx="960" cy="1770" r="28" fill="#0f172a"/>
+<text x="960" y="1781" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">8</text>
+<line x1="1000" y1="1770" x2="1546" y2="1770" stroke="#475569" stroke-width="4"/>
+<polygon points="1580,1770 1546,1753 1546,1787" fill="#475569"/>
+<text x="1290.0" y="1884" font-size="34" font-weight="400" text-anchor="middle" fill="#0f172a">200 OK</text>
+<circle cx="1620" cy="1910" r="28" fill="#0f172a"/>
+<text x="1620" y="1921" font-size="30" font-weight="700" text-anchor="middle" fill="#ffffff">9</text>
+<line x1="1580" y1="1910" x2="1034" y2="1910" stroke="#16a34a" stroke-width="4"/>
+<polygon points="1000,1910 1034,1893 1034,1927" fill="#16a34a"/>
+</svg>

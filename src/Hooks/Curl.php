@@ -104,20 +104,30 @@ final class Curl
             if (!$handle instanceof \CurlHandle || self::$healer === null || HealApi::isInternalCall()) {
                 return;
             }
+            // A managed client's hook records or heals its own call: skip it
+            // here, whatever the status, so each call is counted once.
+            if (self::ownedByAManagedClient()) {
+                return;
+            }
             $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-            if (!Gate::shouldCapture($status) || self::ownedByAManagedClient()) {
+            $method = (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_METHOD) ?: 'GET');
+            $url = (string) curl_getinfo($handle, CURLINFO_EFFECTIVE_URL);
+            $started = microtime(true) - (float) curl_getinfo($handle, CURLINFO_TOTAL_TIME);
+            if (!self::$healer->willHeal($status)) {
+                self::$healer->track($method, $url, $status, $started);
+
                 return;
             }
             $request = self::$requests[$handle] ?? ['body' => null, 'oversized' => false, 'headers' => []];
             self::$healer->attempt(new Capture(
-                (string) (curl_getinfo($handle, CURLINFO_EFFECTIVE_METHOD) ?: 'GET'),
-                (string) curl_getinfo($handle, CURLINFO_EFFECTIVE_URL),
+                $method,
+                $url,
                 $request['headers'],
                 $request['body'],
                 $request['oversized'],
                 $status,
                 is_string($result) ? substr($result, 0, Wire::RESPONSE_BODY_CAP + 1) : '',
-                microtime(true) - (float) curl_getinfo($handle, CURLINFO_TOTAL_TIME),
+                $started,
             ), null);
         } catch (\Throwable) {
             // Observation must never affect the caller.

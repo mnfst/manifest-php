@@ -61,6 +61,22 @@ HTTP status must be 200–599. A failed retry carries its raw body, JSON or not,
 
 Reports are best effort and bounded at 5 seconds. The SDK sends the failed retry's raw body so the app can distinguish recurrence from a newly revealed issue. It does not assert `succeeded` or `failed` itself.
 
+## Tracked requests
+
+Every call a hook sees and does not send to `POST /v1/heal`, whatever its status (2xx, 3xx, 401, 402, 403, 429, 5xx, and a 4xx while healing is paused), is recorded and sent in batches to `POST /v1/requests`:
+
+```json
+{"requests":[{"traceId":"a3ebec173ba83875ad12658ef5f0e115","method":"GET","url":"https://api.example.com/orders/42","statusCode":200,"responseTimeMs":80,"occurredAt":"2026-09-23T11:23:50.790Z"}]}
+```
+
+Metadata only. The URL carries scheme, host, port and path: no query string, userinfo or fragment. No headers and no request or response body are sent. Methods are upper-cased; a record whose method exceeds 16 characters or whose URL exceeds 4,096 is not sent. A call sent to `/v1/heal`, a heal's retry and the SDK's own calls are not tracked. Each call is recorded once, by the hook of the client that made it (raw curl skips calls made through Guzzle, Cake, Symfony or WordPress). A Symfony response is recorded when the app reads its status.
+
+PHP keeps nothing between web requests, so calls are not batched in memory. Recording appends one JSON line, under an exclusive lock, to a spool file in the temp directory shared by every PHP process on the server (`mnfst-requests-<hash>.jsonl`, mode `0600`, capped at 2 MB; past the cap, calls are dropped). Nothing reaches the network on the caller's path.
+
+Sending happens at shutdown, from a function that runs after the app's own shutdown functions. A process sends only when the last send is at least one second old and the spool holds about 500 calls or the last send is at least five seconds old; it claims the spool with an atomic `rename()`, so one process sends at a time. Under php-fpm it first calls `fastcgi_finish_request()`, so the user's response is already complete; on AWS Lambda it does not, because the container would freeze mid-send. Batches hold up to 500 calls within a total budget of two seconds (half a second on Lambda). A network error, timeout, 429 or 5xx is retried once if the budget allows; any other answer, including 404 from a server without the route, is final. A `project_disabled` 403 or a 401 pauses sending like healing. A claimed spool left by a process that died mid-send is removed after 60 seconds.
+
+Known limits: a long-running process (Laravel Octane, RoadRunner, Swoole, `queue:work`) reaches shutdown only when a worker restarts, so its calls are sent then. Under mod_php, which has no `fastcgi_finish_request()`, the process that sends holds its connection for up to two seconds, at most once a second per server. An unwritable temp directory turns tracking off; healing is unaffected.
+
 ## Runtime behavior
 
 All supported clients share the same capture, planning, outcome, and callback flow.

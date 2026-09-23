@@ -94,6 +94,23 @@ final class Wire
      * duplicated key (`page=1&page=2`, the very thing some APIs reject) and
      * rewrite `a.b` as `a_b`, and the server can only repair what it sees.
      */
+    /**
+     * The URL a tracked call is reported under: scheme, host, port and path
+     * only. The query, fragment and userinfo are where credentials ride, so
+     * they never leave the process. Null when the URL is not http(s).
+     */
+    public static function trackedUrl(string $url): ?string
+    {
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if ($parts === false || !in_array($scheme, ['http', 'https'], true) || ($parts['host'] ?? '') === '') {
+            return null;
+        }
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+
+        return $scheme . '://' . $parts['host'] . $port . ($parts['path'] ?? '');
+    }
+
     public static function safeUrl(string $url): string
     {
         $parts = parse_url($url);

@@ -137,7 +137,15 @@ response object preserved as the iterator key.
 
 ## Data sent to Manifest
 
-The failing request's URL, headers and body travel, plus the raw error
+**Every call (metadata only).** For each call that is not healed, whatever its
+status, the SDK sends its method, URL without the query string, userinfo or
+fragment, status code, response time and time of the call. No headers and no
+bodies. Calls are written to a small spool file in the temp directory and sent
+in batches at the end of a web request, at most once per second per server;
+recording one never slows the call. See CONTRACT.md, "Tracked requests", for
+long-running workers and mod_php.
+
+**Healable failures (full capture).** The failing request's URL, headers and body travel, plus the raw error
 response. Credential **values** never do:
 
 - query parameters with credential names are masked to `REDACTED`

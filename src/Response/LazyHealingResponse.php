@@ -128,7 +128,9 @@ final class LazyHealingResponse implements ResponseInterface, StreamableInterfac
         $this->healed = true;
         try {
             $status = $this->inner->getStatusCode();
-            if (!Gate::shouldCapture($status) || ($this->options['buffer'] ?? true) === false) {
+            if (!$this->healer->willHeal($status) || ($this->options['buffer'] ?? true) === false) {
+                $this->healer->track($this->method, $this->url, $status, $this->started);
+
                 return $this->current;
             }
             $capture = new Capture(

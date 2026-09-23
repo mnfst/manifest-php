@@ -16,6 +16,14 @@ if ($path === '/unauthorized') {
     return true;
 }
 
+// Answers with the status in the path: /status/503.
+if (preg_match('~^/status/(\d{3})$~', (string) $path, $m) === 1) {
+    http_response_code((int) $m[1]);
+    echo json_encode(['status' => (int) $m[1]]);
+
+    return true;
+}
+
 if ($path === '/ping') {
     echo json_encode(['pong' => true]);
 
