@@ -16,3 +16,7 @@ $tracking = new Tracking($config, new HealApi($config));
 for ($i = 0; $i < (int) $count; $i++) {
     $tracking->record('get', 'https://api.example.com/items/' . $i . '?token=secret', 200, microtime(true));
 }
+if ($mode === 'flush') {
+    // Race the other children: record and claim-and-send at the same time.
+    $tracking->flush();
+}

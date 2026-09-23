@@ -41,6 +41,12 @@ final class TrackingTest extends TestCase
         }
     }
 
+    /** The last send, as the sender records it in its marker. */
+    private function lastSentAt(float $at): void
+    {
+        file_put_contents($this->tracking->sentPath(), sprintf('%.6F', $at));
+    }
+
     /** @return list<string> */
     private function spoolLines(): array
     {
@@ -129,16 +135,20 @@ final class TrackingTest extends TestCase
 
     public function testASendNeverOutlastsItsBudget(): void
     {
-        $this->record(3);
+        // A server that accepts the connection and never answers.
+        $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+        self::assertNotFalse($server);
+        $config = Config::resolve('k', 'http://' . stream_socket_get_name($server, false));
+        $silent = new Tracking($config, new HealApi($config));
+        $silent->record('GET', 'https://api.example.com/x', 200, microtime(true));
         $started = microtime(true);
-        // A black-holed server: nothing listens on this port, and the budget bounds the connect.
-        $config = Config::resolve('k', 'http://10.255.255.1:9');
-        $slow = new Tracking($config, new HealApi($config));
-        copy($this->tracking->spoolPath(), $slow->spoolPath());
-        $slow->flush(0.3);
-        @unlink($slow->spoolPath());
+        $silent->flush(0.3);
+        $elapsed = microtime(true) - $started;
+        fclose($server);
 
-        self::assertLessThan(1.5, microtime(true) - $started);
+        self::assertGreaterThan(0.2, $elapsed);   // it did wait on the silent server
+        self::assertLessThan(1.0, $elapsed);
+        self::assertFileDoesNotExist($silent->spoolPath());
     }
 
     public function testOnlyOneProcessClaimsTheSpool(): void
@@ -154,16 +164,16 @@ final class TrackingTest extends TestCase
 
     public function testFlushIfDueWaitsForTheGapAndTheBatch(): void
     {
-        touch($this->tracking->sentPath());   // just sent
+        $this->lastSentAt(microtime(true));   // just sent
         $this->record(3);
         $this->tracking->flushIfDue();
         self::assertSame([], $this->manifest->batches());   // under a second since the last send
 
-        touch($this->tracking->sentPath(), time() - 2);
+        $this->lastSentAt(microtime(true) - 2);
         $this->tracking->flushIfDue();
         self::assertSame([], $this->manifest->batches());   // small spool, last send under 5 s ago
 
-        touch($this->tracking->sentPath(), time() - 6);
+        $this->lastSentAt(microtime(true) - 6);
         $this->tracking->flushIfDue();
         self::assertCount(3, $this->manifest->tracked());
     }
@@ -183,7 +193,7 @@ final class TrackingTest extends TestCase
     {
         // A last send "in the future" keeps every child's shutdown send from
         // being due, so the spool is left for the assertion.
-        touch($this->tracking->sentPath(), time() + 3600);
+        $this->lastSentAt(microtime(true) + 3600);
         $children = [];
         for ($i = 0; $i < 8; $i++) {
             $children[] = proc_open(
@@ -198,6 +208,26 @@ final class TrackingTest extends TestCase
         $lines = $this->spoolLines();
         self::assertCount(2000, $lines);
         self::assertCount(2000, array_unique(array_map(static fn (string $l): string => json_decode($l, true)['traceId'], $lines)));
+    }
+
+    public function testProcessesRecordingAndSendingAtOnceLoseAndDuplicateNothing(): void
+    {
+        $children = [];
+        for ($i = 0; $i < 6; $i++) {
+            $children[] = proc_open(
+                [PHP_BINARY, __DIR__ . '/../Support/record-calls.php', $this->manifest->url, '300', 'flush'],
+                [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+                $pipes,
+            );
+        }
+        foreach ($children as $child) {
+            proc_close($child);
+        }
+        $this->tracking->flush();   // whatever the children left behind
+
+        $ids = array_column($this->manifest->tracked(), 'traceId');
+        self::assertCount(1800, $ids);
+        self::assertCount(1800, array_unique($ids));
     }
 
     public function testAProcessThatEndsSendsTheSpoolAtShutdown(): void

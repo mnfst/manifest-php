@@ -89,12 +89,6 @@ final class Wire
     }
 
     /**
-     * The URL as it went on the wire, minus credential values. The query is
-     * handled pair by pair, never through parse_str(): that would collapse a
-     * duplicated key (`page=1&page=2`, the very thing some APIs reject) and
-     * rewrite `a.b` as `a_b`, and the server can only repair what it sees.
-     */
-    /**
      * The URL a tracked call is reported under: scheme, host, port and path
      * only. The query, fragment and userinfo are where credentials ride, so
      * they never leave the process. Null when the URL is not http(s).
@@ -111,6 +105,12 @@ final class Wire
         return $scheme . '://' . $parts['host'] . $port . ($parts['path'] ?? '');
     }
 
+    /**
+     * The URL as it went on the wire, minus credential values. The query is
+     * handled pair by pair, never through parse_str(): that would collapse a
+     * duplicated key (`page=1&page=2`, the very thing some APIs reject) and
+     * rewrite `a.b` as `a_b`, and the server can only repair what it sees.
+     */
     public static function safeUrl(string $url): string
     {
         $parts = parse_url($url);
