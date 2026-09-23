@@ -1,0 +1,29 @@
+CONTRACT.md
+  s_eb3d812ee7c509::t_889609ab89f53d 74,76,78
+src/Response/LazyHealingResponse.php
+  s_eb3d812ee7c509::t_29180c6e9745e0 132-135
+src/Tracking.php
+  s_eb3d812ee7c509::t_6b44feee65024d 114,119-120,122,124,127-132,146,152-158,160,164,166-168,171-188,190-194,197,201,203-209,212,214-216,218,221-223,225-227,232-233,235-242,244-259,262-279,284-303,306,314-318,321-323
+src/Wire.php
+  s_eb3d812ee7c509::t_071c33f1fbdecc 108-113
+tests/Integration/TrackingTest.php
+  s_eb3d812ee7c509::t_3f597671df6ad7 44-49,138-143,145-147,149-151,167,172,176,196,213-232
+tests/Support/record-calls.php
+  s_eb3d812ee7c509::t_ec59bf29015d25 19-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "201e711ac213323cfa2ecda5de0236735c38cf79",
+  "prompts": {},
+  "sessions": {
+    "s_eb3d812ee7c509": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "870ec716-ab0e-4fba-98d8-d89732a224f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
