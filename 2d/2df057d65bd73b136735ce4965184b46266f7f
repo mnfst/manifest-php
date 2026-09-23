@@ -1,0 +1,29 @@
+.github/workflows/release.yml
+  s_eb3d812ee7c509::t_98d770b5aa57be 1-45
+.release-please-manifest.json
+  s_eb3d812ee7c509::t_7064cfad1e5d8b 1-3
+CONTRIBUTING.md
+  s_eb3d812ee7c509::t_d41c8950341f26 55-58
+release-please-config.json
+  s_eb3d812ee7c509::t_b92bbcc16a674f 1-13
+src/Manifest.php
+  s_eb3d812ee7c509::t_4483017bcac670 13
+tests/Unit/VersionTest.php
+  s_eb3d812ee7c509::t_2e46d0c0f93447 1-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2d2df057d65bd73b136735ce4965184b46266f7f",
+  "prompts": {},
+  "sessions": {
+    "s_eb3d812ee7c509": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "870ec716-ab0e-4fba-98d8-d89732a224f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
