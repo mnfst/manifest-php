@@ -62,7 +62,12 @@ final class Cake
                     return $response;
                 }
                 $request = $params[0] ?? null;
-                if (!$request instanceof RequestInterface || !Gate::shouldCapture($response->getStatusCode())) {
+                if (!$request instanceof RequestInterface) {
+                    return $response;
+                }
+                if (!self::$healer->willHeal($response->getStatusCode())) {
+                    self::$healer->track($request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), $started);
+
                     return $response;
                 }
                 $options = is_array($params[1] ?? null) ? $params[1] : [];

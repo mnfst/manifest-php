@@ -55,15 +55,18 @@ final class WordPress
                     return $response;
                 }
                 $status = is_int($response->status_code) ? $response->status_code : 0;
-                if (!Gate::shouldCapture($status)) {
+                $url = is_string($params[0] ?? null) ? $params[0] : '';
+                // The nested request at the redirect target already handled this response.
+                if ($response->redirects > 0 && $response->url !== $url) {
+                    return $response;
+                }
+                if (!self::$healer->willHeal($status)) {
+                    $method = is_string($params[3] ?? null) ? $params[3] : Requests::GET;
+                    self::$healer->track($method, $url, $status, $started);
+
                     return $response;
                 }
                 try {
-                    $url = is_string($params[0] ?? null) ? $params[0] : '';
-                    // The nested request at the redirect target already handled this response.
-                    if ($response->redirects > 0 && $response->url !== $url) {
-                        return $response;
-                    }
                     $headers = self::headers($params[1] ?? []);
                     $method = is_string($params[3] ?? null) ? $params[3] : Requests::GET;
                     $options = is_array($params[4] ?? null) ? $params[4] : [];

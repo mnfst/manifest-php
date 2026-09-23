@@ -34,6 +34,20 @@ if ($current['disabled'] ?? false) {
     return true;
 }
 
+if ($path === '/v1/requests') {
+    $requestsStatus = (int) ($current['requestsStatus'] ?? 202);
+    $append('batches', ['status' => $requestsStatus, 'count' => count($body['requests'] ?? [])]);
+    if ($requestsStatus === 202) {
+        foreach ($body['requests'] ?? [] as $call) {
+            $append('tracked', is_array($call) ? $call : []);
+        }
+    }
+    http_response_code($requestsStatus);
+    echo json_encode(['accepted' => count($body['requests'] ?? [])]);
+
+    return true;
+}
+
 if ($path === '/v1/hello') {
     $append('hellos', is_array($body) ? $body : []);
     echo json_encode(['status' => 'ok']);

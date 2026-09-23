@@ -73,6 +73,24 @@ class StubManifest
         return array_column($this->readLog('heals_raw'), 'raw');
     }
 
+    /** Answer POST /v1/requests with this status (202 records the calls). */
+    public function setRequestsStatus(int $status): void
+    {
+        $this->writeState(['requestsStatus' => $status]);
+    }
+
+    /** @return array<int, array> the tracked calls received, oldest first */
+    public function tracked(): array
+    {
+        return $this->readLog('tracked');
+    }
+
+    /** @return array<int, array{status: int, count: int}> every POST /v1/requests, oldest first */
+    public function batches(): array
+    {
+        return $this->readLog('batches');
+    }
+
     /** @return array<int, array> the handshake bodies received, oldest first */
     public function hellos(): array
     {
@@ -94,7 +112,7 @@ class StubManifest
     public function stop(): void
     {
         $this->terminate();
-        foreach (['state', 'heals', 'heals_raw', 'hellos', 'outcomes', 'requests'] as $suffix) {
+        foreach (['state', 'heals', 'heals_raw', 'hellos', 'outcomes', 'requests', 'tracked', 'batches'] as $suffix) {
             @unlink($this->stateFile . '.' . $suffix);
         }
     }

@@ -21,6 +21,7 @@ spl_autoload_register(static function (string $class): void {
 
 use Mnfst\Bodies;
 use Mnfst\HealApi;
+use Mnfst\Tracking;
 use Mnfst\Wire;
 
 $fixtures = [
@@ -52,6 +53,10 @@ $fixtures = [
     ['schema' => 'outcome', 'name' => 'unattempted replay', 'body' => [
         'failure' => ['kind' => 'not_attempted', 'message' => HealApi::NOT_ATTEMPTED],
     ]],
+    ['schema' => 'requests', 'name' => 'tracked calls: a success and a refused key', 'body' => ['requests' => [
+        Tracking::call('get', 'https://user:pw@api.example.com/orders/42?api_key=sk_live_1#top', 200, microtime(true) - 0.08),
+        Tracking::call('POST', 'http://api.example.com:8080/v1/charges', 401, microtime(true) - 0.02),
+    ]]],
     ['schema' => 'hello', 'name' => 'install handshake', 'body' => ['runtime' => 'php-' . PHP_VERSION]],
     ['schema' => 'hello', 'name' => 'doctor probe', 'body' => ['runtime' => 'php-' . PHP_VERSION, 'probe' => true]],
 ];

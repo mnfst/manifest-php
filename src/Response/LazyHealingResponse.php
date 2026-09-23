@@ -128,7 +128,12 @@ final class LazyHealingResponse implements ResponseInterface, StreamableInterfac
         $this->healed = true;
         try {
             $status = $this->inner->getStatusCode();
-            if (!Gate::shouldCapture($status) || ($this->options['buffer'] ?? true) === false) {
+            if (!$this->healer->willHeal($status) || ($this->options['buffer'] ?? true) === false) {
+                // The transfer's own time, not the moment the app read the status.
+                $total = $this->inner->getInfo('total_time');
+                $started = is_numeric($total) && $total > 0 ? microtime(true) - (float) $total : $this->started;
+                $this->healer->track($this->method, $this->url, $status, $started);
+
                 return $this->current;
             }
             $capture = new Capture(

@@ -19,6 +19,11 @@ final class HealApi
     /** The server's cap on a failure message, in UTF-8 bytes. */
     public const FAILURE_MESSAGE_CAP = 512;
 
+    /** sendRequests(): the batch may succeed if sent again (network error, timeout, 429, 5xx). */
+    public const REQUESTS_RETRY = 'retry';
+    /** sendRequests(): done with this batch, delivered or not worth resending. */
+    public const REQUESTS_DONE = 'done';
+
     /** A disabled project or a rejected key: nothing will change for a while. */
     private const DISABLED_BACKOFF_SECONDS = 300;
 
@@ -122,6 +127,33 @@ final class HealApi
     }
 
     /**
+     * Send one batch of tracked calls to POST /v1/requests (Tracking). Returns
+     * REQUESTS_RETRY only when resending could help; any other answer,
+     * including 404 from a server that predates the route, is final. A
+     * disabled project or a refused key pauses sending like healing.
+     *
+     * @param list<array<string, mixed>> $calls
+     */
+    public function sendRequests(array $calls, float $timeoutSeconds): string
+    {
+        if ($calls === [] || !$this->healingEnabled()) {
+            return self::REQUESTS_DONE;
+        }
+        $response = $this->send('POST', '/v1/requests', ['requests' => $calls], $timeoutSeconds);
+        if ($response === null) {
+            return self::REQUESTS_RETRY;
+        }
+        [$status, $raw] = $response;
+        if (($status === 403 && $this->isProjectDisabled($raw)) || $status === 401) {
+            $this->backOff(self::DISABLED_BACKOFF_SECONDS);
+
+            return self::REQUESTS_DONE;
+        }
+
+        return $status === 429 || $status >= 500 ? self::REQUESTS_RETRY : self::REQUESTS_DONE;
+    }
+
+    /**
      * The retry got an HTTP answer. A failure carries its raw body so the
      * server can tell a recurrence from a newly revealed issue; a success
      * carries the status alone.
@@ -163,7 +195,7 @@ final class HealApi
     }
 
     /** @return array{0: int, 1: string}|null status and raw body, or null on any failure */
-    private function send(string $method, string $path, array $body, int $timeout): ?array
+    private function send(string $method, string $path, array $body, float $timeout): ?array
     {
         try {
             $headers = [
@@ -199,8 +231,9 @@ final class HealApi
                     CURLOPT_CUSTOMREQUEST => $method,
                     CURLOPT_POSTFIELDS => $json,
                     CURLOPT_HTTPHEADER => $headers,
-                    CURLOPT_TIMEOUT => $timeout,
-                    CURLOPT_CONNECTTIMEOUT => $timeout,
+                    CURLOPT_TIMEOUT_MS => max(1, (int) round($timeout * 1000)),
+                    CURLOPT_CONNECTTIMEOUT_MS => max(1, (int) round($timeout * 1000)),
+                    CURLOPT_NOSIGNAL => true,
                     CURLOPT_FOLLOWLOCATION => false,
                 ]);
                 $ok = curl_exec($ch);
