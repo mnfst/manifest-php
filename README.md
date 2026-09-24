@@ -4,7 +4,7 @@
 
 # Manifest for PHP
 
-**See every API call your app makes. Heal the ones that fail.**
+**Keep every API connection in your app up and running.**
 
 [![CI](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml)
 [![Packagist version](https://img.shields.io/packagist/v/mnfst/manifest-php?label=Packagist)](https://packagist.org/packages/mnfst/manifest-php)
@@ -14,11 +14,11 @@
 
 ## What is Manifest
 
-Manifest watches every API call your app makes and heals the ones that fail, in real time.
+Manifest lets you monitor all your API connections and make them more reliable.
 
-* ⏰ **Know what will break next**: Manifest warns you when an API you call is about to change or retire a model, before your calls start failing.
-* 🎯 **Heal failures on the fly**: Manifest patches a failed request and sends it again before your users notice.
-* 📡 **See all your traffic live**: every call, its status and latency, and the issues behind each failure, provider by provider.
+* ⏰ **Stay ahead of breaking changes**: get warned before an API you depend on changes, so nothing breaks by surprise.
+* 🎯 **Never lose a request to a bad call**: failed requests are fixed and sent again on the fly, before your users notice.
+* 📡 **Know exactly how your APIs behave**: every call, every provider, every issue, live in one dashboard.
 
 Works with internal APIs, external services and agent tools.
 
