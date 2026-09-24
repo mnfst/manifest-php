@@ -52,6 +52,10 @@ Use conventional commit titles:
 - `docs:` for documentation changes
 - `!` or `BREAKING CHANGE:` for breaking changes (prepares a major version)
 
+GitHub keeps one rolling `chore: release …` pull request. Merging it sets
+`Manifest::VERSION`, writes the changelog and tags the release; Packagist
+publishes from the tag. Nothing is released before that pull request is merged.
+
 ## Supported Platforms
 
 The SDK works with:
