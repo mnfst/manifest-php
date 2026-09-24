@@ -4,7 +4,7 @@
 
 # Manifest for PHP
 
-**Turn 🔴 4xx API errors into 🟢 2xx in real time.**
+**See every API call your app makes. Heal the ones that fail.**
 
 [![CI](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml)
 [![Packagist version](https://img.shields.io/packagist/v/mnfst/manifest-php?label=Packagist)](https://packagist.org/packages/mnfst/manifest-php)
@@ -14,11 +14,13 @@
 
 ## What is Manifest
 
-Manifest is a self-healing layer that fixes and retries failed API requests on the fly.
+Manifest watches every API call your app makes and heals the ones that fail, in real time.
 
-* 🎯 **Fix failures automatically** before they impact your users.
-* 🔔 **Get notified of root causes** so you can fix them permanently.
-* 🔌 **Works across your stack** with internal APIs, external services, and agent tools.
+* ⏰ **Know what will break next**: Manifest warns you when an API you call is about to change or retire a model, before your calls start failing.
+* 🎯 **Heal failures on the fly**: Manifest patches a failed request and sends it again before your users notice.
+* 📡 **See all your traffic live**: every call, its status and latency, and the issues behind each failure, provider by provider.
+
+Works with internal APIs, external services and agent tools.
 
 ## How it works
 
