@@ -10,7 +10,7 @@ use Mnfst\Hooks\WordPress;
 
 final class Manifest
 {
-    public const VERSION = '0.3.0'; // x-release-please-version
+    public const VERSION = '0.4.0'; // x-release-please-version
 
     private static bool $started = false;
 
