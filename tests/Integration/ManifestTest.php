@@ -3,11 +3,14 @@
 namespace Mnfst\Tests\Integration;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
 use Mnfst\Manifest;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+
+use function Mnfst\Guzzle\middleware;
 
 #[RunTestsInSeparateProcesses]
 final class ManifestTest extends TestCase
@@ -29,10 +32,19 @@ final class ManifestTest extends TestCase
         $this->upstream->stop();
     }
 
+    /** A client the way an app wires it: its own handler stack, plus the middleware. */
+    private function client(array $config = []): Client
+    {
+        $stack = $config['handler'] ?? HandlerStack::create();
+        $stack->push(middleware());
+
+        return new Client(['handler' => $stack] + $config);
+    }
+
     public function testWithoutAKeyTheSdkIsInert(): void
     {
         Manifest::start(null, $this->manifest->url);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(400, $response->getStatusCode());

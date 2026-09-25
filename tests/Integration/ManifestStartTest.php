@@ -2,15 +2,17 @@
 
 namespace Mnfst\Tests\Integration;
 
-use Cake\Http\Client;
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
+use function Mnfst\Guzzle\middleware;
 use function Mnfst\manifest;
 
-/** Hooks are process-global, so each test gets a process. */
+/** Manifest's state is process-global, so each test gets a process. */
 #[RunTestsInSeparateProcesses]
 final class ManifestStartTest extends TestCase
 {
@@ -31,6 +33,15 @@ final class ManifestStartTest extends TestCase
         $this->upstream->stop();
     }
 
+    /** A client the way an app wires it: its own handler stack, plus the middleware. */
+    private function client(array $config = []): Client
+    {
+        $stack = $config['handler'] ?? HandlerStack::create();
+        $stack->push(middleware());
+
+        return new Client(['handler' => $stack] + $config);
+    }
+
     public function testASecondCallIsSilentAndKeepsHealing(): void
     {
         $this->manifest->setResult(['status' => 'patched', 'healAttemptId' => 'a1', 'healedRequest' => ['body' => ['limit' => 100]]]);
@@ -43,22 +54,22 @@ final class ManifestStartTest extends TestCase
 
         try {
             manifest('k', $this->manifest->url);
-            manifest('k', $this->manifest->url);   // the app booted again in the same process (a test runner, a prepend + bootstrap pair)
-            $response = (new Client())->post($this->upstream->url . '/orders', json_encode(['limit' => 500]), ['type' => 'json']);
+            manifest('k', $this->manifest->url);   // the app booted again in the same process (a framework that boots twice)
+            $response = ($this->client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
         } finally {
             restore_error_handler();
         }
 
         self::assertSame(200, $response->getStatusCode(), 'still healed after the second call');
-        self::assertCount(1, $this->manifest->heals(), 'one hook, one capture');
+        self::assertCount(1, $this->manifest->heals(), 'one adapter, one capture');
         self::assertCount(1, $this->manifest->hellos(), 'the handshake is announced once');
     }
 
-    public function testClearingTheKeyDisablesAlreadyInstalledHooks(): void
+    public function testClearingTheKeyTurnsTheAdaptersOff(): void
     {
         manifest('k', $this->manifest->url);
         manifest('', $this->manifest->url);
-        (new Client())->post($this->upstream->url.'/orders', '{"limit":500}', ['type' => 'json']);
+        ($this->client(['http_errors' => false]))->post($this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame([], $this->manifest->heals());
     }
@@ -71,7 +82,7 @@ final class ManifestStartTest extends TestCase
         try {
             manifest('k', $this->manifest->url);
             manifest('k', $other->url);
-            (new Client())->post($this->upstream->url . '/orders', json_encode(['limit' => 500]), ['type' => 'json']);
+            ($this->client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
             self::assertCount(0, $this->manifest->heals());
             self::assertCount(1, $other->heals(), 'the capture went to the server of the latest call');

@@ -2,24 +2,24 @@
 
 namespace Mnfst;
 
-use Mnfst\Hooks\Cake;
-use Mnfst\Hooks\Curl;
-use Mnfst\Hooks\Guzzle;
-use Mnfst\Hooks\Symfony;
-use Mnfst\Hooks\WordPress;
-
 final class Manifest
 {
     public const VERSION = '0.4.0'; // x-release-please-version
 
-    private static bool $started = false;
+    private static ?Config $config = null;
+
+    private static ?Healer $healer = null;
+
+    /** @var array<string, true> */
+    private static array $adapters = [];
+
+    private static bool $announced = false;
 
     /**
      * Idempotent: frameworks boot more than once per process (Laravel's test
      * runner boots the app for every test, and turns any PHP warning into an
-     * exception), and auto_prepend_file plus a bootstrap call is a common
-     * double. The hooks are process-global and installed once; a later call
-     * only refreshes the configuration they use.
+     * exception). A later call only refreshes the configuration the adapters
+     * use; an empty key turns them off.
      */
     public static function start(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): void
     {
@@ -27,43 +27,54 @@ final class Manifest
         // Symfony's MockHttpClient. Those faked 4xx go through the real client
         // and would be reported to Manifest as failures that never happened,
         // filling the dashboard and, with a real key, hitting the live project.
-        // So manifest() installs nothing under a test runner unless MNFST_IN_TESTS
-        // opts in (the SDK's own suite does). auto_prepend_file installs, which
-        // cannot guard themselves in app code, are covered by this too.
+        // So nothing starts under a test runner unless MNFST_IN_TESTS opts in
+        // (the SDK's own suite does).
         if (!self::captureEnabled()) {
             return;
         }
 
         $config = Config::resolve($apiKey, $url, $onHeal);
-        // Refresh existing hooks even when the key was explicitly cleared.
-        if ($config->apiKey === null && !self::$started) {
+        if ($config->apiKey === null) {
+            self::$healer = null;
+
             return;
         }
-        $api = new HealApi($config);
-
-        // Every hook, not a short-circuit: each must get its chance to install.
-        $installed = [
-            Guzzle::install($config, $api),
-            Cake::install($config, $api),
-            Symfony::install($config, $api),
-            WordPress::install($config, $api),
-            Curl::install($config, $api),
-        ];
-
-        // Announce only what is real: without the extension nothing is
-        // instrumented, and a handshake would make the dashboard show an app
-        // as connected that can never report a failure. Once per process, so a
-        // second manifest() call refreshes the hooks without announcing again.
-        if (!self::$started && in_array(true, $installed, true)) {
-            self::$started = true;
-            (new Handshake($config))->announce();
-        }
+        self::$config = $config;
+        self::$healer = new Healer($config, new HealApi($config));
+        self::announce();
     }
 
-    /** True when the opentelemetry extension is present, so full coverage is active. */
-    public static function hasFullCoverage(): bool
+    /** The healer adapters use, or null when they must pass calls through. */
+    public static function healer(): ?Healer
     {
-        return function_exists('OpenTelemetry\Instrumentation\hook');
+        return self::captureEnabled() ? self::$healer : null;
+    }
+
+    /** An adapter is in place: once the SDK is started too, the install is real. */
+    public static function register(string $adapter): void
+    {
+        self::$adapters[$adapter] = true;
+        self::announce();
+    }
+
+    /** @return list<string> */
+    public static function adapters(): array
+    {
+        return array_keys(self::$adapters);
+    }
+
+    /**
+     * Announce only what is real: without an adapter nothing can report, and
+     * a handshake would make the dashboard show an app as connected that can
+     * never report a failure. Once per process.
+     */
+    private static function announce(): void
+    {
+        if (self::$announced || self::$healer === null || self::$config === null || self::$adapters === []) {
+            return;
+        }
+        self::$announced = true;
+        (new Handshake(self::$config))->announce();
     }
 
     /**
@@ -78,7 +89,7 @@ final class Manifest
         if (defined('PHPUNIT_COMPOSER_INSTALL') || defined('PEST_VERSION')) {
             return true;
         }
-        // auto_prepend_file runs before the runner defines its constants.
+        // A framework can boot before the runner defines its constants.
         $argv = $_SERVER['argv'] ?? [];
         $runner = basename($argv[0] ?? '');
 

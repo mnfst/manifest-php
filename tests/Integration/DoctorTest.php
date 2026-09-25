@@ -58,21 +58,6 @@ final class DoctorTest extends TestCase
         self::assertStringContainsString('MNFST_KEY', $output);
     }
 
-    public function testReportsTheCoverageLevel(): void
-    {
-        [, $output] = $this->doctor('mnfx_valid');
-        self::assertMatchesRegularExpression('/full coverage|nothing is instrumented/', $output);
-        self::assertStringNotContainsString('framework-only', $output);
-        self::assertStringNotContainsString('Mode A', $output);
-        self::assertStringNotContainsString('Mode B', $output);
-    }
-
-    public function testReportsWhetherTheSdkLoadsFirst(): void
-    {
-        [, $output] = $this->doctor('mnfx_valid');
-        self::assertStringContainsString('loading', $output);
-    }
-
     public function testWarnsWhenTheServerIsUnreachable(): void
     {
         ob_start();

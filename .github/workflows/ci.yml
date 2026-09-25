@@ -16,7 +16,6 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: opentelemetry
       - run: composer require --dev 'guzzlehttp/guzzle:^${{ matrix.guzzle }}.0' --no-update
       - run: composer validate --strict
       - run: composer install --prefer-dist --no-progress

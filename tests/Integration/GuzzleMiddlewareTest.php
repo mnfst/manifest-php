@@ -9,19 +9,19 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
-use Mnfst\Config;
-use Mnfst\HealApi;
 use Mnfst\HealEvent;
-use Mnfst\Hooks\Guzzle;
 use Mnfst\Tests\Support\CountingStream;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
-/** Hooks are process-global and cannot be removed, so each test gets a process. */
+use function Mnfst\Guzzle\middleware;
+use function Mnfst\manifest;
+
+/** Manifest's state is process-global, so each test gets a process. */
 #[RunTestsInSeparateProcesses]
-final class GuzzleHookTest extends TestCase
+final class GuzzleMiddlewareTest extends TestCase
 {
     private StubManifest $manifest;
     private StubUpstream $upstream;
@@ -36,16 +36,24 @@ final class GuzzleHookTest extends TestCase
         $this->upstream = new StubUpstream();
         $this->upstream->start();
 
-        $config = Config::resolve('k', $this->manifest->url, function (HealEvent $event): void {
+        manifest('k', $this->manifest->url, function (HealEvent $event): void {
             $this->events[] = $event;
         });
-        Guzzle::install($config, new HealApi($config));
     }
 
     protected function tearDown(): void
     {
         $this->manifest->stop();
         $this->upstream->stop();
+    }
+
+    /** A client the way an app wires it: its own handler stack, plus the middleware. */
+    private function client(array $config = []): Client
+    {
+        $stack = $config['handler'] ?? HandlerStack::create();
+        $stack->push(middleware());
+
+        return new Client(['handler' => $stack] + $config);
     }
 
     private function healTo(array $body): void
@@ -71,7 +79,7 @@ final class GuzzleHookTest extends TestCase
     public function testHealsAFailingRequest(): void
     {
         $this->healTo(['limit' => 100]);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -81,7 +89,7 @@ final class GuzzleHookTest extends TestCase
     public function testHealsWhenHttpErrorsThrows(): void
     {
         $this->healTo(['limit' => 100]);
-        $response = (new Client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        $response = ($this->client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
         self::assertSame(200, $response->getStatusCode());
     }
 
@@ -90,7 +98,7 @@ final class GuzzleHookTest extends TestCase
         $this->healTo(['limit' => 400]);   // the heal changes nothing that matters: the retry fails again
 
         try {
-            (new Client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+            ($this->client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
             self::fail('a 400 must throw for a client with http_errors on, retry or not');
         } catch (ClientException $e) {
             self::assertSame(400, $e->getResponse()->getStatusCode());
@@ -101,7 +109,7 @@ final class GuzzleHookTest extends TestCase
 
     public function testASuccessfulResponsePassesThroughUntouched(): void
     {
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 5]]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -110,14 +118,14 @@ final class GuzzleHookTest extends TestCase
 
     public function testAForbiddenStatusIsNeverCaptured(): void
     {
-        (new Client(['http_errors' => false]))->get($this->upstream->url . '/unauthorized');
+        ($this->client(['http_errors' => false]))->get($this->upstream->url . '/unauthorized');
         self::assertSame([], $this->manifest->heals());
     }
 
     public function testNoPatchReturnsTheOriginalResponse(): void
     {
         $this->manifest->setResult(['status' => 'no_patch']);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(400, $response->getStatusCode());
@@ -127,7 +135,7 @@ final class GuzzleHookTest extends TestCase
     public function testAStreamedErrorBodyStaysReadable(): void
     {
         $this->manifest->setResult(['status' => 'no_patch']);
-        $response = (new Client(['http_errors' => false, 'stream' => true]))
+        $response = ($this->client(['http_errors' => false, 'stream' => true]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(400, $response->getStatusCode());
@@ -139,7 +147,7 @@ final class GuzzleHookTest extends TestCase
     {
         $this->manifest->setResult(['status' => 'no_patch']);
         try {
-            (new Client(['stream' => true]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+            ($this->client(['stream' => true]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
             self::fail('a 400 must throw');
         } catch (ClientException $e) {
             self::assertStringContainsString('too big', $e->getResponse()->getBody()->getContents());
@@ -149,7 +157,7 @@ final class GuzzleHookTest extends TestCase
     public function testTheOutcomeIsReported(): void
     {
         $this->healTo(['limit' => 100]);
-        (new Client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        ($this->client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame([['a1', ['response' => ['statusCode' => 200]]]], $this->manifest->outcomes());
     }
@@ -157,7 +165,7 @@ final class GuzzleHookTest extends TestCase
     public function testTheSdkOwnCallsAreNotCaptured(): void
     {
         $this->healTo(['limit' => 100]);
-        (new Client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        ($this->client(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertCount(1, $this->manifest->heals(), 'the retry must not be captured as a new failure');
     }
@@ -166,7 +174,7 @@ final class GuzzleHookTest extends TestCase
     public function testAppliesAHealedUrlToAGetAndKeepsTheOriginalRequest(): void
     {
         $this->healRequestTo(['url' => $this->upstream->url . '/search?query=Batman', 'body' => null]);
-        $client = new Client(['http_errors' => false, 'headers' => ['X-Client-Default' => 'yes']]);
+        $client = $this->client(['http_errors' => false, 'headers' => ['X-Client-Default' => 'yes']]);
 
         $echo = $this->search($client, 'query=Batman&page=1&page=2', ['headers' => ['Authorization' => 'Bearer secret-token']]);
 
@@ -181,7 +189,7 @@ final class GuzzleHookTest extends TestCase
     public function testTheHealedBodyWinsOverTheOriginalJsonOption(): void
     {
         $this->healTo(['limit' => 100]);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500], 'headers' => ['X-Trace' => 't1']]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -195,7 +203,7 @@ final class GuzzleHookTest extends TestCase
             'headers' => ['X-Api-Version' => '2022-11-28', 'X-Legacy' => null],
         ]);
 
-        $echo = $this->search(new Client(['http_errors' => false]), 'query=Batman&page=1&page=2', ['headers' => ['X-Legacy' => '1']]);
+        $echo = $this->search($this->client(['http_errors' => false]), 'query=Batman&page=1&page=2', ['headers' => ['X-Legacy' => '1']]);
 
         self::assertSame('2022-11-28', $echo['headers']['x-api-version']);
         self::assertArrayNotHasKey('x-legacy', $echo['headers']);
@@ -205,7 +213,7 @@ final class GuzzleHookTest extends TestCase
     {
         $this->healRequestTo(['url' => $this->upstream->url . '/search?api_key=REDACTED&page=1']);
 
-        $echo = $this->search(new Client(['http_errors' => false]), 'api_key=sk_live_1&page=1&page=2');
+        $echo = $this->search($this->client(['http_errors' => false]), 'api_key=sk_live_1&page=1&page=2');
 
         self::assertSame('api_key=sk_live_1&page=1', $echo['query']);
         self::assertStringContainsString('api_key=REDACTED&page=1&page=2', $this->manifest->heals()[0]['request']['url']);
@@ -215,7 +223,7 @@ final class GuzzleHookTest extends TestCase
     {
         $this->healRequestTo(['url' => 'https://evil.test/search?query=Batman']);
 
-        $response = (new Client(['http_errors' => false]))->get($this->upstream->url . '/search?query=Batman&page=1&page=2');
+        $response = ($this->client(['http_errors' => false]))->get($this->upstream->url . '/search?query=Batman&page=1&page=2');
 
         self::assertSame(400, $response->getStatusCode());
         self::assertSame('not_attempted', $this->manifest->outcomes()[0][1]['failure']['kind']);
@@ -224,7 +232,7 @@ final class GuzzleHookTest extends TestCase
     public function testOnHealReceivesTheOutcome(): void
     {
         $this->healRequestTo(['url' => $this->upstream->url . '/search?query=Batman']);
-        $this->search(new Client(['http_errors' => false]), 'query=Batman&page=1&page=2');
+        $this->search($this->client(['http_errors' => false]), 'query=Batman&page=1&page=2');
 
         self::assertCount(1, $this->events);
         self::assertSame('patched', $this->events[0]->healStatus);
@@ -235,7 +243,7 @@ final class GuzzleHookTest extends TestCase
     public function testAnOversizedRequestBodyIsNotReadIntoMemory(): void
     {
         $this->manifest->setResult(['status' => 'no_patch']);
-        $client = new Client(['http_errors' => false]);
+        $client = $this->client(['http_errors' => false]);
 
         $known = new CountingStream(str_repeat('x', 3 * 1024 * 1024));
         $client->post($this->upstream->url . '/search?page=1&page=2', ['body' => $known, 'headers' => ['Content-Type' => 'text/plain']]);
@@ -257,7 +265,7 @@ final class GuzzleHookTest extends TestCase
             'healAttemptId' => 'a1',
             'healedRequest' => ['url' => $this->upstream->url . '/orders?limit=100', 'body' => null],
         ]);
-        $response = (new Client(['http_errors' => false]))->get($this->upstream->url . '/orders?limit=500');
+        $response = ($this->client(['http_errors' => false]))->get($this->upstream->url . '/orders?limit=500');
 
         self::assertSame(200, $response->getStatusCode());
         $echo = json_decode((string) $response->getBody(), true);
@@ -272,7 +280,7 @@ final class GuzzleHookTest extends TestCase
             'healAttemptId' => 'a1',
             'healedRequest' => ['headers' => ['x-limit' => '100'], 'body' => []],
         ]);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -286,7 +294,7 @@ final class GuzzleHookTest extends TestCase
             new Response(400, ['Content-Type' => 'application/json'], '{"error":"too big"}'),
             new Response(200, [], '{"faked":true}'),
         ]);
-        $client = new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
+        $client = $this->client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
 
         $response = $client->post('https://api.example/orders', ['json' => ['limit' => 500]]);
 
@@ -300,7 +308,7 @@ final class GuzzleHookTest extends TestCase
     {
         $this->healTo(['limit' => 300]);   // still over the limit: the retry fails too
         try {
-            (new Client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+            ($this->client())->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
             self::fail('a 4xx retry must reject like the original did');
         } catch (ClientException $e) {
             self::assertSame(400, $e->getResponse()->getStatusCode());
@@ -318,7 +326,7 @@ final class GuzzleHookTest extends TestCase
             new Response(400, ['Content-Type' => 'application/json'], '{"error":"too big"}'),
             new ConnectException('connection reset', new Request('POST', 'https://api.example/orders')),
         ]);
-        $client = new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
+        $client = $this->client(['handler' => HandlerStack::create($mock), 'http_errors' => false]);
 
         $response = $client->post('https://api.example/orders', ['json' => ['limit' => 500]]);
 
@@ -335,7 +343,7 @@ final class GuzzleHookTest extends TestCase
             'healAttemptId' => 'a1',
             'healedRequest' => ['url' => 'https://elsewhere.test/orders'],
         ]);
-        $response = (new Client(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(400, $response->getStatusCode());
@@ -350,7 +358,7 @@ final class GuzzleHookTest extends TestCase
             'headers' => ['X-Old' => null, 'Authorization' => null],
             'body' => ['limit' => 100],
         ]]);
-        $client = new Client([
+        $client = $this->client([
             'handler' => HandlerStack::create($mock), 'http_errors' => false,
             'query' => ['limit' => 500], 'json' => ['limit' => 500],
             'headers' => ['X-Old' => 'remove'], 'auth' => ['user', 'password'],
@@ -369,7 +377,7 @@ final class GuzzleHookTest extends TestCase
         $stream = new \Mnfst\Tests\Support\CountingStream(str_repeat('x', 100000));
         $mock = new MockHandler([new Response(400), new Response(200, [], new \GuzzleHttp\Psr7\NoSeekStream($stream))]);
         $this->healTo(['limit' => 100]);
-        $response = (new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]))
+        $response = ($this->client(['handler' => HandlerStack::create($mock), 'http_errors' => false]))
             ->post('https://api.example/orders', ['json' => ['limit' => 500]]);
 
         self::assertSame(200, $response->getStatusCode());
@@ -383,7 +391,7 @@ final class GuzzleHookTest extends TestCase
         $stream = new \Mnfst\Tests\Support\CountingStream($raw);
         $mock = new MockHandler([new Response(400, [], new \GuzzleHttp\Psr7\NoSeekStream($stream))]);
         $this->manifest->setResult(['status' => 'no_patch']);
-        $response = (new Client(['handler' => HandlerStack::create($mock), 'http_errors' => false]))
+        $response = ($this->client(['handler' => HandlerStack::create($mock), 'http_errors' => false]))
             ->get('https://api.example/orders');
 
         $captured = $this->manifest->heals()[0]['response'];
@@ -396,7 +404,7 @@ final class GuzzleHookTest extends TestCase
     public function testConcurrentAsyncRequestsAreBothHealed(): void
     {
         $this->healTo(['limit' => 100]);
-        $client = new Client(['http_errors' => false]);
+        $client = $this->client(['http_errors' => false]);
         $promises = [
             $client->postAsync($this->upstream->url . '/orders', ['json' => ['limit' => 700]]),
             $client->postAsync($this->upstream->url . '/orders', ['json' => ['limit' => 800]]),
@@ -404,5 +412,20 @@ final class GuzzleHookTest extends TestCase
         foreach (\GuzzleHttp\Promise\Utils::unwrap($promises) as $response) {
             self::assertSame(200, $response->getStatusCode());
         }
+    }
+
+    public function testTwoManifestMiddlewaresHealOnce(): void
+    {
+        $this->healTo(['limit' => 100]);
+        $stack = HandlerStack::create();
+        $stack->push(middleware());   // e.g. Laravel's global middleware
+        $stack->push(middleware());   // and the app pushed it too
+
+        $response = (new Client(['handler' => $stack, 'http_errors' => false]))
+            ->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertCount(1, $this->manifest->heals());
+        self::assertCount(1, $this->manifest->outcomes());
     }
 }

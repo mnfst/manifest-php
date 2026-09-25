@@ -4,8 +4,7 @@ namespace Mnfst;
 
 /**
  * Verify an install from the project directory. It resolves the SDK version,
- * masks and validates the key against the handshake endpoint, and reports which
- * coverage level is active.
+ * masks and validates the key against the handshake endpoint.
  */
 final class Doctor
 {
@@ -22,33 +21,11 @@ final class Doctor
             self::line('  key       ' . self::mask($config->apiKey));
         }
 
-        if (Manifest::hasFullCoverage()) {
-            self::line('  coverage  full coverage — every HTTP client is instrumented');
-        } else {
-            self::line('  coverage  none — the opentelemetry extension is not installed, so nothing is instrumented');
-            self::line('            add it with: pecl install opentelemetry');
-            $failures++;
-        }
-
-        self::line('  loading   ' . (self::loadsFirst()
-            ? 'auto_prepend_file is set'
-            : 'not preloaded — call manifest() before your first HTTP call, or set auto_prepend_file'));
-
         if ($config->apiKey !== null) {
             $failures += self::reportProject($config);
         }
 
         return $failures > 0 ? 1 : 0;
-    }
-
-    /**
-     * A hook cannot attach to a function that has already been called, so the
-     * SDK has to load before the app's first HTTP call. auto_prepend_file is
-     * the only way to guarantee that.
-     */
-    private static function loadsFirst(): bool
-    {
-        return (string) ini_get('auto_prepend_file') !== '';
     }
 
     private static function reportProject(Config $config): int

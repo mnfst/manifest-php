@@ -129,9 +129,7 @@ class StubManifest
     /**
      * Ready means OUR server answers on the port: another test's stub may
      * still be dying on it, and the wrong one would answer 404 to every
-     * route. Deliberately NOT curl: a curl_exec here would happen before the
-     * SDK's hooks are installed, and an internal function that has already
-     * been called cannot be hooked afterwards (hook rule 7).
+     * route.
      */
     private function waitUntilReady(string $url, string $token): bool
     {
