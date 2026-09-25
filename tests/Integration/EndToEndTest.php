@@ -108,4 +108,13 @@ final class EndToEndTest extends TestCase
 
         $this->assertHealed($response->getStatusCode(), $response->getContent());
     }
+
+    public function testWordPressEndToEnd(): void
+    {
+        require_once __DIR__ . '/../Support/wordpress.php';
+        \Mnfst\WordPress\listen();
+        $response = wp_remote_post($this->upstream->url.'/orders', ['headers' => ['Content-Type' => 'application/json'], 'body' => json_encode(['limit' => 500])]);
+
+        $this->assertHealed($response['response']['code'], (string) $response['body']);
+    }
 }

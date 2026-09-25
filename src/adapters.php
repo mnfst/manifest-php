@@ -15,3 +15,11 @@ namespace Mnfst\Cake {
         Listener::register();
     }
 }
+
+namespace Mnfst\WordPress {
+    /** Heal every wp_remote_* call; call it from a must-use plugin. */
+    function listen(): void
+    {
+        Filters::register();
+    }
+}

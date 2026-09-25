@@ -139,4 +139,14 @@ final class TrackingAdaptersTest extends TestCase
 
         self::assertSame([['/ping', 200], ['/status/503', 503]], $this->tracked());
     }
+
+    public function testWordPressTracksWhatItDoesNotHeal(): void
+    {
+        require_once __DIR__ . '/../Support/wordpress.php';
+        \Mnfst\WordPress\listen();
+        wp_remote_get($this->upstream->url . '/ping');
+        wp_remote_get($this->upstream->url . '/unauthorized');
+
+        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
+    }
 }
