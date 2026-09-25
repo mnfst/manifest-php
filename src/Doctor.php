@@ -4,26 +4,36 @@ namespace Mnfst;
 
 /**
  * Verify an install from the project directory. It resolves the SDK version,
- * masks and validates the key against the handshake endpoint.
+ * masks and validates the key against the handshake endpoint, and checks that
+ * each framework the project uses has its adapter wired.
  */
 final class Doctor
 {
-    public static function run(array $argv, Config $config): int
+    public static function run(array $argv, Config $config, ?string $root = null): int
     {
         $failures = 0;
 
         self::line('Manifest ' . Manifest::VERSION . ' on PHP ' . PHP_VERSION);
 
         if ($config->apiKey === null) {
-            self::line('  key       missing — set MNFST_KEY');
+            self::line('  key        missing — set MNFST_KEY');
             $failures++;
         } else {
-            self::line('  key       ' . self::mask($config->apiKey));
+            self::line('  key        ' . self::mask($config->apiKey));
         }
 
         if ($config->apiKey !== null) {
             $failures += self::reportProject($config);
         }
+
+        foreach (Frameworks::inspect($root ?? (string) getcwd()) as $framework) {
+            self::line('  ' . str_pad($framework['name'], 10) . ' ' . $framework['line']);
+            if (!$framework['ok']) {
+                $failures++;
+            }
+        }
+        self::line('  guzzle     your own clients: push \Mnfst\Guzzle\middleware() on their handler stack');
+        self::line('  not seen   raw curl_* calls, file_get_contents, and Guzzle clients built inside libraries');
 
         return $failures > 0 ? 1 : 0;
     }
@@ -32,7 +42,7 @@ final class Doctor
     {
         $answer = self::hello($config);
         if ($answer === null) {
-            self::line('  server    unreachable at ' . $config->baseUrl);
+            self::line('  server     unreachable at ' . $config->baseUrl);
 
             return 1;
         }
@@ -44,13 +54,13 @@ final class Doctor
         // unreachable server sends the operator after the wrong problem.
         if ($status !== 200) {
             self::line($status === 403 && ($hello['error'] ?? null) === 'project_disabled'
-                ? '  server    accepted the key, but healing is disabled for this project'
-                : '  server    rejected the key (HTTP ' . $status . ') at ' . $config->baseUrl);
+                ? '  server     accepted the key, but healing is disabled for this project'
+                : '  server     rejected the key (HTTP ' . $status . ') at ' . $config->baseUrl);
 
             return 1;
         }
 
-        self::line('  server    accepted the key at ' . $config->baseUrl);
+        self::line('  server     accepted the key at ' . $config->baseUrl);
 
         return 0;
     }
