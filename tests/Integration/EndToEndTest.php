@@ -12,6 +12,7 @@ use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\HttpClient as SymfonyHttpClient;
 
 use function Mnfst\Guzzle\middleware;
 use function Mnfst\manifest;
@@ -98,5 +99,13 @@ final class EndToEndTest extends TestCase
         $response = (new CakeClient())->post($this->upstream->url.'/orders', json_encode(['limit' => 500]), ['type' => 'json']);
 
         $this->assertHealed($response->getStatusCode(), $response->getStringBody());
+    }
+
+    public function testSymfonyEndToEnd(): void
+    {
+        $client = new \Mnfst\Symfony\HealingHttpClient(SymfonyHttpClient::create());
+        $response = $client->request('POST', $this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
+
+        $this->assertHealed($response->getStatusCode(), $response->getContent());
     }
 }

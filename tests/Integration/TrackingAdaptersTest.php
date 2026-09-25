@@ -9,11 +9,13 @@ use GuzzleHttp\HandlerStack;
 use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\Manifest;
+use Mnfst\Symfony\HealingHttpClient;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use Mnfst\Tracking;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\NativeHttpClient;
 
 use function Mnfst\Cake\listen;
 use function Mnfst\Guzzle\middleware;
@@ -127,5 +129,14 @@ final class TrackingAdaptersTest extends TestCase
         (new CakeClient())->get($this->upstream->url . '/unauthorized');
 
         self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
+    }
+
+    public function testSymfonyTracksAResponseWhenItsStatusIsRead(): void
+    {
+        $client = new HealingHttpClient(new NativeHttpClient());
+        self::assertSame(200, $client->request('GET', $this->upstream->url . '/ping')->getStatusCode());
+        self::assertSame(503, $client->request('GET', $this->upstream->url . '/status/503')->getStatusCode());
+
+        self::assertSame([['/ping', 200], ['/status/503', 503]], $this->tracked());
     }
 }
