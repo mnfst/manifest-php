@@ -9,12 +9,11 @@ use GuzzleHttp\Promise\Create;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\Utils;
-use Mnfst\Capture;
 use Mnfst\Config;
-use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
 use Mnfst\Outcome;
+use Mnfst\Pipeline;
 use Mnfst\Replay;
 use Mnfst\Streams;
 use Psr\Http\Message\RequestInterface;
@@ -126,37 +125,12 @@ final class Guzzle
         if (self::$healer === null) {
             return $response;
         }
-        if (!self::$healer->willHeal($response->getStatusCode())) {
-            self::$healer->track($request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), $started);
 
-            return $response;
-        }
-        try {
-            // A consumed non-seekable upload cannot be reconstructed safely.
-            [$body, $oversized] = $request->getBody()->isSeekable()
-                ? Streams::read($request->getBody(), Gate::REQUEST_BODY_LIMIT)
-                : [null, true];
-            [$responseBody, $response] = Streams::readResponse($response);
-            $capture = new Capture(
-                $request->getMethod(),
-                (string) $request->getUri(),
-                $request->getHeaders(),
-                $body,
-                $oversized,
-                $response->getStatusCode(),
-                $responseBody,
-                $started,
-            );
-            $outcome = self::$healer->attempt($capture, static function (array $plan) use ($send, $request, &$retried): Outcome {
-                $retried = self::retryRequest($request, $plan);
+        return Pipeline::respond(self::$healer, $request, $response, $started, static function (array $plan) use ($send, $request, &$retried): Outcome {
+            $retried = self::retryRequest($request, $plan);
 
-                return $send($plan);
-            });
-
-            return $outcome?->response instanceof ResponseInterface ? $outcome->response : $response;
-        } catch (\Throwable) {
-            return $response;
-        }
+            return $send($plan);
+        });
     }
 
     /** @return callable(array{url: string, headers: array<string, ?string>, body: ?string}): Outcome */

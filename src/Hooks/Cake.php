@@ -5,12 +5,11 @@ namespace Mnfst\Hooks;
 use Cake\Http\Client;
 use Cake\Http\Client\Request as CakeRequest;
 use Cake\Http\Client\Response as CakeResponse;
-use Mnfst\Capture;
 use Mnfst\Config;
-use Mnfst\Gate;
 use Mnfst\HealApi;
 use Mnfst\Healer;
 use Mnfst\Outcome;
+use Mnfst\Pipeline;
 use Mnfst\Replay;
 use Mnfst\Streams;
 use Psr\Http\Message\RequestInterface;
@@ -65,44 +64,17 @@ final class Cake
                 if (!$request instanceof RequestInterface) {
                     return $response;
                 }
-                if (!self::$healer->willHeal($response->getStatusCode())) {
-                    self::$healer->track($request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), $started);
-
-                    return $response;
-                }
                 $options = is_array($params[1] ?? null) ? $params[1] : [];
-                try {
-                    [$body, $oversized] = $request->getBody()->isSeekable()
-                        ? Streams::read($request->getBody(), Gate::REQUEST_BODY_LIMIT)
-                        : [null, true];
-                    [$responseBody, $response] = Streams::readResponse($response);
-                    $capture = new Capture(
-                        $request->getMethod(),
-                        (string) $request->getUri(),
-                        $request->getHeaders(),
-                        $body,
-                        $oversized,
-                        $response->getStatusCode(),
-                        $responseBody,
-                        $started,
-                    );
-                    $outcome = self::$healer->attempt($capture, static function (array $plan) use ($client, $request, $options): Outcome {
-                        $replayed = $client->send(self::retryRequest($request, $plan), $options);
-                        [$body, $replayed] = $replayed->getStatusCode() >= 400
-                            ? Streams::readResponse($replayed)
-                            : ['', $replayed];
+                $healed = Pipeline::respond(self::$healer, $request, $response, $started, static function (array $plan) use ($client, $request, $options): Outcome {
+                    $replayed = $client->send(self::retryRequest($request, $plan), $options);
+                    [$body, $replayed] = $replayed->getStatusCode() >= 400
+                        ? Streams::readResponse($replayed)
+                        : ['', $replayed];
 
-                        return new Outcome(
-                            $replayed->getStatusCode(),
-                            $body,
-                            $replayed,
-                        );
-                    });
+                    return new Outcome($replayed->getStatusCode(), $body, $replayed);
+                });
 
-                    return $outcome?->response instanceof CakeResponse ? $outcome->response : $response;
-                } catch (\Throwable) {
-                    return $response;
-                }
+                return $healed instanceof CakeResponse ? $healed : $response;
             },
         );
 
