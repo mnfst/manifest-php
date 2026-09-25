@@ -1,0 +1,19 @@
+docs/guide.md
+  s_6f64c1294b31c5::t_d678be207c954f 58-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6de85f95b915ec086c1945030a2d695761e5a27c",
+  "prompts": {},
+  "sessions": {
+    "s_6f64c1294b31c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3865711-d1b6-424f-95c3-1dd78f4091fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
