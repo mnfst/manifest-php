@@ -2,6 +2,7 @@
 
 namespace Mnfst\Tests\Integration;
 
+use Cake\Http\Client as CakeClient;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\HandlerStack;
 use Mnfst\Config;
@@ -89,5 +90,13 @@ final class EndToEndTest extends TestCase
         self::assertSame(400, $response->getStatusCode());
         self::assertCount(1, $this->manifest->heals());
         self::assertSame([], $this->manifest->outcomes(), 'no retry, nothing to report');
+    }
+
+    public function testCakeEndToEnd(): void
+    {
+        \Mnfst\Cake\listen();
+        $response = (new CakeClient())->post($this->upstream->url.'/orders', json_encode(['limit' => 500]), ['type' => 'json']);
+
+        $this->assertHealed($response->getStatusCode(), $response->getStringBody());
     }
 }

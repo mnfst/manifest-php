@@ -2,6 +2,7 @@
 
 namespace Mnfst\Tests\Integration;
 
+use Cake\Http\Client as CakeClient;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\HandlerStack;
@@ -14,6 +15,7 @@ use Mnfst\Tracking;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
+use function Mnfst\Cake\listen;
 use function Mnfst\Guzzle\middleware;
 
 /**
@@ -116,5 +118,14 @@ final class TrackingAdaptersTest extends TestCase
 
         // The first went to heal and was refused (project_disabled); the second found the pause and was recorded.
         self::assertSame([['/orders', 400]], $this->tracked());
+    }
+
+    public function testCakeTracksWhatItDoesNotHeal(): void
+    {
+        listen();
+        (new CakeClient())->get($this->upstream->url . '/ping');
+        (new CakeClient())->get($this->upstream->url . '/unauthorized');
+
+        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
     }
 }

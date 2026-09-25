@@ -7,3 +7,11 @@ namespace Mnfst\Guzzle {
         return Middleware::create();
     }
 }
+
+namespace Mnfst\Cake {
+    /** Heal every Cake\Http\Client call; for apps that wire it in config/bootstrap.php instead of addPlugin(). */
+    function listen(): void
+    {
+        Listener::register();
+    }
+}

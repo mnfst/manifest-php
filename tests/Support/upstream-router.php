@@ -30,6 +30,13 @@ if ($path === '/ping') {
     return true;
 }
 
+if ($path === '/redirect') {
+    http_response_code(302);
+    header('Location: /ping');
+
+    return true;
+}
+
 // Rejects a duplicated `page` query param the way TMDB does, else echoes the
 // request so a test can see exactly what was replayed: method, raw query,
 // headers and body.
