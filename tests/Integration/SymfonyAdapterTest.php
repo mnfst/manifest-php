@@ -214,15 +214,46 @@ final class SymfonyAdapterTest extends TestCase
         self::assertSame($this->upstream->url.'/orders', $this->manifest->heals()[0]['request']['url']);
     }
 
+    /**
+     * Mirrors real FrameworkBundle wiring: http_client and every scoped client
+     * (here, api.client) are built on top of http_client.transport, not on
+     * http_client itself.
+     */
     public function testTheBundleDecoratesTheHttpClientServiceAndItsScopedClients(): void
+    {
+        $container = new \Symfony\Component\DependencyInjection\ContainerBuilder();
+        $container->register('http_client.transport', HttpClientInterface::class)
+            ->setFactory([HttpClient::class, 'create'])
+            ->setPublic(true);
+        $container->register('http_client', \Symfony\Component\HttpClient\ScopingHttpClient::class)
+            ->setFactory([\Symfony\Component\HttpClient\ScopingHttpClient::class, 'forBaseUri'])
+            ->setArguments([new \Symfony\Component\DependencyInjection\Reference('http_client.transport'), $this->upstream->url])
+            ->setPublic(true);
+        $container->register('api.client', \Symfony\Component\HttpClient\ScopingHttpClient::class)
+            ->setFactory([\Symfony\Component\HttpClient\ScopingHttpClient::class, 'forBaseUri'])
+            ->setArguments([new \Symfony\Component\DependencyInjection\Reference('http_client.transport'), $this->upstream->url])
+            ->setPublic(true);
+        (new \Mnfst\Symfony\ManifestBundle())->build($container);
+        $container->compile();
+
+        self::assertInstanceOf(HealingHttpClient::class, $container->get('http_client.transport'));
+
+        $this->healTo(['limit' => 100]);
+        $response = $container->get('api.client')->request('POST', '/orders', ['json' => ['limit' => 500]]);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertCount(1, $this->manifest->heals());
+
+        $response = $container->get('http_client')->request('POST', '/orders', ['json' => ['limit' => 500]]);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertCount(2, $this->manifest->heals(), 'a request through http_client itself heals too');
+    }
+
+    /** Without a transport service, the fallback decorates http_client directly. */
+    public function testTheBundleDecoratesHttpClientDirectlyWhenThereIsNoTransport(): void
     {
         $container = new \Symfony\Component\DependencyInjection\ContainerBuilder();
         $container->register('http_client', HttpClientInterface::class)
             ->setFactory([HttpClient::class, 'create'])
-            ->setPublic(true);
-        $container->register('api.client', \Symfony\Component\HttpClient\ScopingHttpClient::class)
-            ->setFactory([\Symfony\Component\HttpClient\ScopingHttpClient::class, 'forBaseUri'])
-            ->setArguments([new \Symfony\Component\DependencyInjection\Reference('http_client'), $this->upstream->url])
             ->setPublic(true);
         (new \Mnfst\Symfony\ManifestBundle())->build($container);
         $container->compile();
@@ -230,7 +261,7 @@ final class SymfonyAdapterTest extends TestCase
         self::assertInstanceOf(HealingHttpClient::class, $container->get('http_client'));
 
         $this->healTo(['limit' => 100]);
-        $response = $container->get('api.client')->request('POST', '/orders', ['json' => ['limit' => 500]]);
+        $response = $container->get('http_client')->request('POST', $this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
         self::assertSame(200, $response->getStatusCode());
         self::assertCount(1, $this->manifest->heals());
     }
