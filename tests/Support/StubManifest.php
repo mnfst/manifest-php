@@ -22,7 +22,7 @@ class StubManifest
             $port = random_int(9200, 9899);
             $token = bin2hex(random_bytes(8));
             $this->process = proc_open(
-                sprintf('exec php -S 127.0.0.1:%d %s', $port, escapeshellarg($this->routerPath())),
+                sprintf('exec %s -S 127.0.0.1:%d %s', escapeshellarg(PHP_BINARY), $port, escapeshellarg($this->routerPath())),
                 [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
                 $pipes,
                 null,
