@@ -55,12 +55,13 @@ once the runner starts.
 vendor/bin/manifest doctor
 ```
 
-It prints the SDK version, the masked key, whether the server accepts it, one
-line per framework the project uses saying whether its adapter is wired, and
-two reminder lines: how to wire your own Guzzle clients, and which traffic is
-never seen. It exits non-zero when the key is missing or rejected, or when a
-framework the project uses is not wired. The probe does not record an
-installation.
+It prints the SDK version, the masked key, whether the server accepts it (when
+a key is set), one line per framework the project uses saying whether its
+adapter is wired, and two reminder lines: how to wire your own Guzzle clients,
+and which traffic is never seen. It exits non-zero when the key is missing,
+the server rejects it or cannot be reached, healing is disabled for the
+project, or a framework the project uses is not wired. The probe does not
+record an installation.
 
 ## Laravel
 
