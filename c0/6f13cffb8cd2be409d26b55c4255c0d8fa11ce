@@ -1,0 +1,61 @@
+tests/Integration/ManifestAdaptersTest.php
+  s_6f64c1294b31c5::t_70324e1caf7f17 1-85
+tests/Integration/ManifestStartTest.php
+  s_6f64c1294b31c5::t_d79b7d8239f752 5-6,12,15,36-44,57-58,64,68,72,85
+tests/Support/StubManifest.php
+  s_6f64c1294b31c5::t_8db9cdd25018ab 132
+tests/Integration/EndToEndTest.php
+  s_6f64c1294b31c5::t_8097efa8da491f 56-64
+  s_6f64c1294b31c5::t_396063c6d5c638 76,86
+  s_6f64c1294b31c5::t_2e185d55330944 6,15,19-22,33
+src/adapters.php
+  s_6f64c1294b31c5::t_c2558c8f645206 1-9
+tests/Integration/ManifestTest.php
+  s_6f64c1294b31c5::t_e4708c995cc509 6,13-14,35-43,47
+src/Guzzle/Middleware.php
+  s_6f64c1294b31c5::t_7b23d00e503230 1-62,75-115
+  s_6f64c1294b31c5::t_3959f9cf6cc72c 63-74
+tests/Integration/TrackingAdaptersTest.php
+  s_6f64c1294b31c5::t_0d81a3a327d1c7 7-24
+  s_6f64c1294b31c5::t_ea6b92a14b656b 78-113
+  s_6f64c1294b31c5::t_48011ba6c6c5e4 30,36,39,47,50,54,56-64,67,74,77,119
+tests/Integration/FailOpenTest.php
+  s_6f64c1294b31c5::t_802b00172ffd75 6,13-15,17-18,41-47
+  s_6f64c1294b31c5::t_73e911f0e7b8c0 69,74
+  s_6f64c1294b31c5::t_5a0c0ecd8877e8 48-49
+src/Doctor.php
+  s_6f64c1294b31c5::t_17f2f13f205df7 7
+tests/Integration/TestRunnerGuardTest.php
+  s_6f64c1294b31c5::t_182dfe5f022d43 6,13,18,40-48,60,66,72,84
+tests/Integration/GuzzleMiddlewareTest.php
+  s_6f64c1294b31c5::t_56ff42d4bc402a 39-55
+  s_6f64c1294b31c5::t_682d3772206588 33,57,60,62,66,68,72,74,77,80-81,415-430
+  s_6f64c1294b31c5::t_397ac3a444d533 56
+  s_6f64c1294b31c5::t_d6d4bc951834d9 19-24
+  s_6f64c1294b31c5::t_8a53e7659403b9 82-407
+  s_6f64c1294b31c5::t_468d42a4aaa121 58
+src/Manifest.php
+  s_6f64c1294b31c5::t_d619ae51e39cb2 9-16,21-22,30-31,37-39,42-44,47-48,50-77,92
+composer.json
+  s_6f64c1294b31c5::t_ef961a57f197a0 21
+phpunit.xml
+  s_6f64c1294b31c5::t_3d9afedca1641a 10
+tests/Unit/TestRunnerDetectionTest.php
+  s_6f64c1294b31c5::t_2f989f90596ecd 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c06f13cffb8cd2be409d26b55c4255c0d8fa11ce",
+  "prompts": {},
+  "sessions": {
+    "s_6f64c1294b31c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3865711-d1b6-424f-95c3-1dd78f4091fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
