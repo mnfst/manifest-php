@@ -1,0 +1,37 @@
+src/Cake/ManifestPlugin.php
+  s_6f64c1294b31c5::t_907a685ba0d0b5 1-33
+tests/Integration/TrackingAdaptersTest.php
+  s_6f64c1294b31c5::t_f5834aed8cb661 122-130
+  s_6f64c1294b31c5::t_83d9fdaca49377 5,18
+composer.json
+  s_6f64c1294b31c5::t_c6b016d9d663d1 12
+tests/Integration/CakeAdapterTest.php
+  s_6f64c1294b31c5::t_251a90b64bf70b 12-14,16,36-37
+  s_6f64c1294b31c5::t_dece121c97d718 252-279
+  s_6f64c1294b31c5::t_2c5e8945f4d1d9 1-11,15,17-35,38-251,280
+src/adapters.php
+  s_6f64c1294b31c5::t_a0988f107954a5 10-17
+src/Cake/Listener.php
+  s_6f64c1294b31c5::t_3885f3b431843a 1-101
+tests/Support/upstream-router.php
+  s_6f64c1294b31c5::t_3f36ff3776ea1a 33-39
+tests/Integration/EndToEndTest.php
+  s_6f64c1294b31c5::t_1431d3004db0ca 94-101
+  s_6f64c1294b31c5::t_d5390684c963ac 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "42006f33ca3e18736ac756464f4436989d42af0f",
+  "prompts": {},
+  "sessions": {
+    "s_6f64c1294b31c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3865711-d1b6-424f-95c3-1dd78f4091fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
