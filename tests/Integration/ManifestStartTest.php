@@ -4,6 +4,9 @@ namespace Mnfst\Tests\Integration;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\HandlerStack;
+use Mnfst\Config;
+use Mnfst\Handshake;
+use Mnfst\HealApi;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -25,6 +28,10 @@ final class ManifestStartTest extends TestCase
         $this->manifest->start();
         $this->upstream = new StubUpstream();
         $this->upstream->start();
+        // Stub ports repeat across runs: clear this config's handshake and backoff markers.
+        $config = Config::resolve('k', $this->manifest->url);
+        @unlink((new Handshake($config))->markerPath());
+        @unlink((new HealApi($config))->backoffPath());
     }
 
     protected function tearDown(): void
