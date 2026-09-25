@@ -11,6 +11,7 @@
   "require-dev": {
     "cakephp/http": "^5.0",
     "guzzlehttp/guzzle": "^7.5 || ^8.0",
+    "illuminate/container": "^11.0 || ^12.0 || ^13.0",
     "illuminate/http": "^11.0 || ^12.0 || ^13.0",
     "phpunit/phpunit": "^11.0",
     "rmccue/requests": "^2.0",
@@ -23,5 +24,8 @@
   "autoload-dev": { "psr-4": { "Mnfst\\Tests\\": "tests/" } },
   "bin": ["bin/manifest"],
   "scripts": { "test": "phpunit" },
-  "config": { "sort-packages": true }
+  "config": { "sort-packages": true },
+  "extra": {
+    "laravel": { "providers": ["Mnfst\\Laravel\\ManifestServiceProvider"] }
+  }
 }

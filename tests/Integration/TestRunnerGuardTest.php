@@ -89,4 +89,25 @@ final class TestRunnerGuardTest extends TestCase
         putenv('MNFST_IN_TESTS');
         unset($_SERVER['MNFST_IN_TESTS']);
     }
+
+    public function testLaravelFakeFailuresNeverReachManifestByDefault(): void
+    {
+        putenv('MNFST_IN_TESTS');
+        unset($_ENV['MNFST_IN_TESTS'], $_SERVER['MNFST_IN_TESTS']);
+        $app = new \Illuminate\Container\Container();
+        \Illuminate\Support\Facades\Facade::setFacadeApplication($app);
+        $app->singleton(\Illuminate\Http\Client\Factory::class);
+        $provider = new \Mnfst\Laravel\ManifestServiceProvider($app);
+        $provider->register();
+        $provider->boot();
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response(['error' => 'fake'], 404)]);
+        manifest('k', $this->manifest->url);
+
+        $response = \Illuminate\Support\Facades\Http::get('https://api.example/fake');
+
+        self::assertSame(404, $response->status());
+        self::assertSame([], $this->manifest->heals());
+        self::assertSame([], $this->manifest->hellos());
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+    }
 }
