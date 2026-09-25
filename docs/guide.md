@@ -14,7 +14,7 @@ the environment; the callback is supplied in code.
 Environment variables are read from `$_SERVER`, `$_ENV` and `getenv()`, in that
 order, so a key set in a Laravel or Symfony `.env` file is found without any
 code. Passing the key explicitly (from `config()`, say) always wins. An empty
-or whitespace-only key disables capture, including hooks already installed.
+or whitespace-only key disables capture, including adapters already in place.
 An explicitly blank environment value also overrides lower-priority sources.
 
 Everything that is policy — whether a given app, endpoint or direction gets
@@ -35,33 +35,19 @@ manifest(onHeal: fn (HealEvent $e) => error_log("[manifest] $e->healStatus → $
 
 ## Calling manifest() more than once
 
-`manifest()` is idempotent. Hooks are process-global and installed once; a
-later call only refreshes the key, URL and callback they use, and never
-warns. A framework that boots the application several times per process (a
-test runner, Octane) or an `auto_prepend_file` next to a bootstrap call is fine.
+`manifest()` is idempotent. A later call only refreshes the key, URL and
+callback the adapters use, and never warns. A framework that boots the
+application several times per process (a test runner, Octane) is fine.
 
 ## Testing
 
-The SDK detects a PHPUnit or Pest run and installs no hooks, so a suite that
+The SDK detects a PHPUnit or Pest run and stays off, so a suite that
 fakes its HTTP (`Http::fake()`, Guzzle's `MockHandler`, Symfony's
 `MockHttpClient`) never reports those faked 4xx to Manifest. Nothing to
 configure. Set `MNFST_IN_TESTS=1` when you do want healing during tests, e.g.
-integration tests against a staging server. Standard PHPUnit, Pest, and
-`artisan test` commands are recognized before bootstrap, including prepend
-installs. Capture also checks the runner at request time, so a hook installed
-before a custom test bootstrap becomes silent once the runner starts.
-
-## Loading order
-
-A PHP hook cannot attach to a function that has already been called in the
-process. The SDK therefore has to load before your application makes its first
-HTTP call, and `auto_prepend_file` is the only way to guarantee that.
-
-Under php-fpm this matters more than it first appears: a worker process serves
-many requests, so a single request that ran before the SDK loaded can leave that
-worker uninstrumented for every later request it serves.
-
-`vendor/bin/manifest doctor` reports whether `auto_prepend_file` is set.
+integration tests against a staging server. Capture also checks the runner at
+request time, so an SDK started before a custom test bootstrap becomes silent
+once the runner starts.
 
 ## Verifying the installation
 
@@ -69,19 +55,22 @@ worker uninstrumented for every later request it serves.
 vendor/bin/manifest doctor
 ```
 
-It prints the SDK version, the masked key, the coverage level, whether the SDK
-loads early enough, and whether the server accepts the key. It exits non-zero
-when installation checks fail. The probe does not record an installation.
+It prints the SDK version, the masked key, whether each framework the project
+uses has its adapter in place, and whether the server accepts the key. It
+exits non-zero when installation checks fail. The probe does not record an
+installation.
 
 ## Laravel
 
-Call `manifest()` from a service provider's `register()` method, passing the
-key and URL from `config()` (Laravel's `.env` is read into `$_ENV`/`$_SERVER`,
-which the SDK also reads, but config is the Laravel way and survives
-`config:cache`). Every request through the `Http` facade is covered; a healed
-call fires one `ResponseReceived` event, with the healed response.
+The service provider is discovered by Composer, so there is nothing to write.
+It adds the Guzzle middleware to every `Http::` call through
+`Http::globalMiddleware()` and starts the SDK with
+`config('services.manifest.key')` and `config('services.manifest.url')`, or
+`MNFST_KEY` and `MNFST_URL`. Config survives `config:cache`. A healed call fires
+one `ResponseReceived` event, with the healed response. If you turned package
+discovery off, add `Mnfst\Laravel\ManifestServiceProvider` to `bootstrap/providers.php`.
 
-The SDK installs nothing under a PHPUnit or Pest run, so `Http::fake()` answers
+The SDK stays off under a PHPUnit or Pest run, so `Http::fake()` answers
 are never reported as real failures; you do not need to guard the call
 yourself. Set `MNFST_IN_TESTS=1` to opt back in for integration tests that hit
 a real server. (A `phpunit.xml` `<env name="MNFST_KEY" value=""/>` would not
@@ -92,14 +81,54 @@ have worked under `php artisan test` anyway: the artisan process hands its
 `Http::retry()` retries a failed call; each attempt that fails is a capture of
 its own, so a failure Manifest cannot fix is reported once per attempt.
 
+## CakePHP
+
+`$this->addPlugin(\Mnfst\Cake\ManifestPlugin::class);` in `Application::bootstrap()`.
+The plugin listens to `HttpClient.afterSend` on the global event manager, which
+every `Cake\Http\Client` dispatches to, and replaces the result with the healed
+response. It reads `Configure::read('Manifest.key')` and `Manifest.url`, then
+`MNFST_KEY`. The event exists from CakePHP 5.1; on older versions the plugin
+does nothing and `manifest doctor` says so. To wire it without the plugin, call
+`\Mnfst\Cake\listen();` and `\Mnfst\manifest();` in `config/bootstrap.php`.
+
+## Symfony
+
+`Mnfst\Symfony\ManifestBundle::class => ['all' => true]` in `config/bundles.php`.
+The bundle decorates the HTTP transport that `http_client` and every scoped
+client are built on, so all of them are covered. Outside the container, wrap a
+client yourself: `new \Mnfst\Symfony\HealingHttpClient(HttpClient::create())`, and
+call `\Mnfst\manifest()` once. Headers set only as default options of the
+transport (`framework.http_client.default_options`) are not in the captured
+request; the retry still sends them.
+
+## WordPress
+
+A must-use plugin loads before every other plugin and on WP-CLI:
+
+```php
+<?php // wp-content/mu-plugins/manifest.php
+require_once ABSPATH . 'vendor/autoload.php';   // wherever Composer installed it
+\Mnfst\WordPress\listen();
+\Mnfst\manifest();
+```
+
+It uses the `pre_http_request` and `http_response` filters, so every
+`wp_remote_*` call is covered.
+
+## Guzzle
+
+Push `\Mnfst\Guzzle\middleware()` on the client's handler stack and call
+`\Mnfst\manifest()` once. The retry goes through the rest of the stack, so your
+other middleware, a `MockHandler` or a proxy setting apply to it too. A client
+with the middleware twice (Laravel's global middleware plus your own) heals
+each call once.
+
 ## Supported traffic
 
-Guzzle (every client in the process, whoever constructed it), Laravel's `Http`
-facade, `Cake\Http\Client` and `Symfony\Component\HttpClient` (the curl and
-native transports, and PSR-18 clients that run on one of these), plus
-WordPress's `wp_remote_*` calls through `WpOrg\Requests`, are
-instrumented and healed. A library with its own raw `curl_*` client is captured
-but never healed. `file_get_contents` and other stream-based HTTP are not covered.
+Laravel's `Http` facade, `Cake\Http\Client` (5.1+), Symfony's `HttpClient`,
+WordPress's `wp_remote_*`, and any Guzzle client that carries the middleware
+are healed. Raw `curl_*` clients, `file_get_contents`, and Guzzle clients built
+inside a library that does not let you pass your own are not seen.
 
 Symfony's responses are lazy and its `stream()` reads several at once for
 concurrency; the SDK heals a response when the app first reads it, and leaves
@@ -163,12 +192,11 @@ regard to case, and body framing is recalculated by the original client.
 ## Development
 
 ```sh
-docker build -f Dockerfile.test -t manifest-php-test .
-docker run --rm -v "$PWD":/app manifest-php-test bash -c "composer install && composer test"
+composer install
+composer test
 ```
 
-The test suite needs the `opentelemetry` extension, which is why it runs in
-Docker. Hooks are process-global and cannot be removed, so every test that
-installs one runs in its own process. CI runs PHP 8.2–8.5 and checks Guzzle 7
-with Laravel, plus a separate Guzzle 8 job. Integration tests use local stub
-servers and never require a live Manifest key.
+The suite needs no extension. Manifest's state is process-global, so every
+test that starts it runs in its own process. CI runs PHP 8.2–8.5 and checks
+Guzzle 7 with Laravel, plus a separate Guzzle 8 job. Integration tests use
+local stub servers and never require a live Manifest key.

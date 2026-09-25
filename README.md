@@ -30,19 +30,8 @@ Every call your app makes is reported to Manifest as metadata only (method, URL 
 
 - <a href="https://www.php.net/downloads" target="_blank">PHP 8.2</a> or higher
 - The PHP `curl` extension, used to contact Manifest
-- The <a href="https://pecl.php.net/package/opentelemetry" target="_blank">opentelemetry</a> extension:
 
-```sh
-pecl install opentelemetry && docker-php-ext-enable opentelemetry
-```
-
-In Docker, one line:
-
-```dockerfile
-RUN pecl install opentelemetry && docker-php-ext-enable opentelemetry
-```
-
-PHP cannot instrument an HTTP client without it, so the SDK sees nothing until it is installed.
+No PHP extension to compile, nothing to change on the server.
 
 ## Get started
 
@@ -54,46 +43,74 @@ PHP cannot instrument an HTTP client without it, so the SDK sees nothing until i
 
 [Read the prompt →](https://dashboard.manifest.build/prompt-php.md)
 
-The prompt installs the extension, wires the loading order, and stops to let you paste your key.
-
 ### Start with code
 
 ```sh
 composer require mnfst/manifest-php
 ```
 
-Manifest must load **before your application makes its first HTTP call**. A PHP hook cannot attach
-to a function that has already run, so an SDK that loads late sees nothing. Point
-`auto_prepend_file` at the bundled entry point:
+Then connect it to your HTTP client. Console commands (`artisan`, `bin/cake`,
+`bin/console`, WP-CLI) are covered the same way as web requests.
 
-```ini
-; php.ini, a .user.ini, or your php-fpm pool config
-auto_prepend_file = vendor/mnfst/manifest-php/prepend.php
-```
-
-Or call it yourself, as the first thing your application does:
+**Laravel** — nothing to write. The service provider is discovered automatically
+and covers every `Http::` call. The key is read from `MNFST_KEY`, or from
+`config/services.php`:
 
 ```php
-use function Mnfst\manifest;
-
-manifest();  // before any HTTP call
+'manifest' => ['key' => env('MNFST_KEY'), 'url' => env('MNFST_URL')],
 ```
 
-Laravel and CakePHP need no code of their own for coverage: their HTTP clients
-are instrumented. In Laravel, make the call from a service provider:
+**CakePHP 5.1+** — in `src/Application.php`:
 
 ```php
-// app/Providers/AppServiceProvider.php
-public function register(): void
+public function bootstrap(): void
 {
-    \Mnfst\manifest(config('services.manifest.key'), config('services.manifest.url'));
+    parent::bootstrap();
+    $this->addPlugin(\Mnfst\Cake\ManifestPlugin::class);
 }
 ```
 
-with `'manifest' => ['key' => env('MNFST_KEY'), 'url' => env('MNFST_URL')]` in
-`config/services.php`. The SDK stays silent under PHPUnit and Pest, so
-`Http::fake()` answers are never reported as failures; `MNFST_IN_TESTS=1` opts
-back in. See [the guide](docs/guide.md#testing).
+**Symfony** — in `config/bundles.php`:
+
+```php
+Mnfst\Symfony\ManifestBundle::class => ['all' => true],
+```
+
+**WordPress** — create `wp-content/mu-plugins/manifest.php`:
+
+```php
+<?php
+require_once ABSPATH . 'vendor/autoload.php';   // wherever Composer installed it
+\Mnfst\WordPress\listen();
+\Mnfst\manifest();
+```
+
+**Any other Guzzle client** — push the middleware on its handler stack, and start the SDK once:
+
+```php
+use GuzzleHttp\Client;
+use GuzzleHttp\HandlerStack;
+use function Mnfst\manifest;
+
+manifest();
+
+$stack = HandlerStack::create();
+$stack->push(\Mnfst\Guzzle\middleware());
+$client = new Client(['handler' => $stack]);
+```
+
+A library that accepts a Guzzle or PSR-18 client (the AWS SDK, most API
+clients) is covered when you pass it that client.
+
+The SDK stays silent under PHPUnit and Pest, so `Http::fake()` answers are
+never reported as failures; `MNFST_IN_TESTS=1` opts back in. See
+[the guide](docs/guide.md#testing).
+
+### Upgrading from 0.4
+
+1. Remove the `auto_prepend_file` line and any `manifest()` call you added for loading order.
+2. Add the line for your framework above (Laravel: nothing).
+3. You can remove the `opentelemetry` extension if nothing else on the server uses it.
 
 ## Setup
 
@@ -110,8 +127,8 @@ Verify the install from your project directory:
 vendor/bin/manifest doctor
 ```
 
-It masks and validates the key, reports which coverage level is active, and tells you whether the
-SDK is loading early enough.
+It masks and validates the key, and checks that each framework the project uses
+has its adapter in place.
 
 ## Try it
 
@@ -134,16 +151,13 @@ Check your [Manifest dashboard](https://dashboard.manifest.build) to see all rep
 | The app calls an API via… | Covered |
 | --- | --- |
 | Laravel's `Http` facade | ✅ healed |
-| Guzzle, any client, including one built inside a third-party library | ✅ healed |
-| CakePHP's `Cake\Http\Client` | ✅ healed |
-| Symfony's `HttpClient` (curl & native transports) | ✅ healed |
-| WordPress `wp_remote_*` / `WpOrg\Requests` | ✅ healed |
-| A library with its own raw `curl_*` client, such as `stripe/stripe-php` | ⚠️ **captured, never healed** |
+| CakePHP's `Cake\Http\Client` (5.1+) | ✅ healed |
+| Symfony's `HttpClient`, including scoped clients | ✅ healed |
+| WordPress `wp_remote_*` | ✅ healed |
+| A Guzzle client that carries the middleware | ✅ healed |
+| A Guzzle client built inside a library that does not accept yours | ❌ not seen |
+| Raw `curl_*`, such as `stripe/stripe-php` | ❌ not seen |
 | `file_get_contents` | ❌ not seen |
-
-The `curl_*` row is a permanent limit of PHP, not a temporary gap. The extension can observe an
-internal function but cannot replace its return value, so those failures appear in your dashboard
-while your application still receives the original error.
 
 Symfony responses consumed through `stream()` or with `buffer => false` stay
 under the caller's control and are not healed. See [the coverage details](docs/guide.md#supported-traffic).
@@ -152,11 +166,22 @@ under the caller's control and are not healed. See [the coverage details](docs/g
 
 | Infrastructure | Supported |
 | --- | --- |
-| Docker, Kubernetes | ✅ one line in the Dockerfile |
-| A VPS or your own server (Forge, Ploi) | ✅ `pecl install opentelemetry` |
-| Heroku, Platform.sh | ⚠️ only if the platform ships the extension |
-| Laravel Vapor, Bref | ⚠️ possible with a custom Lambda layer |
-| Shared hosting (cPanel, Hostinger, OVH) | ❌ you do not control the runtime |
+| Docker, Kubernetes | ✅ |
+| A VPS or your own server (Forge, Ploi) | ✅ |
+| Heroku, Platform.sh | ✅ |
+| Laravel Vapor, Bref | ✅ |
+| Shared hosting (cPanel, Hostinger, OVH) | ✅ where Composer runs |
+
+## What leaves the machine
+
+| Call | Sent to Manifest | Never sent |
+| --- | --- | --- |
+| A call Manifest does not heal, whatever its status | method, scheme, host, port, path, status, timing | query string, headers, bodies |
+| A failure Manifest can heal (a 4xx other than 401, 402, 403 and 429) | URL, headers, request body and error response. Credential values in the query string and headers are replaced by `REDACTED`; credential fields at the top level of the body are left out | the masked values |
+| The retry | nothing: it goes to the original API, through your own client, with the real values | — |
+
+One known limit: a secret inside a URL path (a webhook URL, `/bot<token>/`) is
+sent as is. The rules are in [`src/Wire.php`](src/Wire.php) and [CONTRACT.md](CONTRACT.md).
 
 ## More
 
