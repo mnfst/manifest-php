@@ -1,0 +1,41 @@
+README.md
+  s_d818a26c4e3030::t_35c3a72bcb0f0d 163
+src/Handshake.php
+  s_067891c79a3ecd::t_58d31f766249b5 68-70
+src/Healer.php
+  s_067891c79a3ecd::t_8697aaf45aafdc 86-89
+src/UrlFilter.php
+  s_067891c79a3ecd::t_77496ea6412e4a 35-56,111
+tests/Integration/HandshakeTest.php
+  s_d818a26c4e3030::t_87b2bf443a35f1 80-95
+tests/Integration/UrlFilterHookTest.php
+  s_d818a26c4e3030::t_807bbaa4f37c61 97-107
+tests/Support/upstream-router.php
+  s_d818a26c4e3030::t_bb0efff6652be9 27-36
+tests/fixtures/url-filter.json
+  s_d818a26c4e3030::t_2ad83f14dd1608 17-18,56-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "058e579f0fc74658f7a2150b083c5b2c558020e9",
+  "prompts": {},
+  "sessions": {
+    "s_067891c79a3ecd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfaa0496-d823-4e52-90fd-bd032e7cc33d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    },
+    "s_d818a26c4e3030": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a03df1d-91b9-4237-ada0-b7cb17ab89ea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
