@@ -65,7 +65,9 @@ final class Handshake
                 return;
             }
             curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
+                // The answer is never read: discard it as it arrives, so an oversized
+                // body can never exhaust memory while the app starts.
+                CURLOPT_WRITEFUNCTION => static fn ($handle, string $data): int => strlen($data),
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode(['runtime' => 'php-' . PHP_VERSION]),
                 CURLOPT_HTTPHEADER => $headers,

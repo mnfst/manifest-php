@@ -14,6 +14,8 @@
     { "entry": "https://api.stripe.com", "rule": { "host": "api.stripe.com", "path": null } },
     { "entry": "localhost:3000/api", "rule": { "host": "localhost", "path": "/api" } },
     { "entry": "[::1]:8080/x", "rule": { "host": "::1", "path": "/x" } },
+    { "entry": "example.com/%70rivate", "rule": { "host": "example.com", "path": "/private" } },
+    { "entry": "example.com/a/../b", "rule": { "host": "example.com", "path": "/b" } },
     { "entry": "", "rule": null, "invalid": false },
     { "entry": "   ", "rule": null, "invalid": false },
     { "entry": "stripe.com/v1/customers/*/sources", "rule": null, "invalid": true },
@@ -51,6 +53,14 @@
     { "allow": "stripe.com/v1/*", "url": "https://api.stripe.com/v1/charges", "excluded": true },
     { "allow": " , ", "url": "https://api.openai.com/", "excluded": false },
     { "url": "https://api.openai.com/", "excluded": false },
-    { "allow": "stripe.com", "url": "not a url", "excluded": false }
+    { "allow": "stripe.com", "url": "not a url", "excluded": false },
+    { "deny": "example.com/private", "url": "https://example.com/%70rivate", "excluded": true },
+    { "deny": "example.com/private", "url": "https://example.com/private%2Fitem", "excluded": true },
+    { "deny": "example.com/private", "url": "https://example.com/public/..%2Fprivate/x", "excluded": true },
+    { "deny": "example.com/private", "url": "https://example.com/public/%2E%2E/private", "excluded": true },
+    { "deny": "example.com/private", "url": "https://example.com/privatefoo%2Fx", "excluded": false },
+    { "allow": "example.com/public", "url": "https://example.com/public/..%2Fprivate", "excluded": true },
+    { "allow": "example.com/public", "url": "https://example.com/p%75blic/x", "excluded": false },
+    { "deny": "example.com/a%20b", "url": "https://example.com/a%20b/c", "excluded": true }
   ]
 }

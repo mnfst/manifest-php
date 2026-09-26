@@ -32,7 +32,28 @@ final class UrlFilter
             return null;
         }
 
-        return ['host' => trim($host, '[]'), 'path' => $path === '' ? null : $path];
+        $canonical = $path === '' ? '/' : self::canonicalPath($path);
+
+        return ['host' => trim($host, '[]'), 'path' => $canonical === '/' ? null : $canonical];
+    }
+
+    /**
+     * The path a server is likely to route: every percent-escape decoded (so `/%70rivate` and
+     * `/private%2Fitem` read as `/private…`) and `.`/`..` segments resolved. Rules compare
+     * against it, so an encoded spelling cannot slip past a denylist or into an allowlist.
+     */
+    public static function canonicalPath(string $path): string
+    {
+        $segments = [];
+        foreach (array_slice(explode('/', rawurldecode($path)), 1) as $segment) {
+            if ($segment === '..') {
+                array_pop($segments);
+            } elseif ($segment !== '.') {
+                $segments[] = $segment;
+            }
+        }
+
+        return '/' . implode('/', $segments);
     }
 
     /**
@@ -87,7 +108,7 @@ final class UrlFilter
         }
         $host = trim(rtrim(strtolower($host), '.'), '[]');
         $path = parse_url($url, PHP_URL_PATH);
-        $path = is_string($path) && $path !== '' ? $path : '/';
+        $path = self::canonicalPath(is_string($path) && $path !== '' ? $path : '/');
         if (self::matches($host, $path, $deny)) {
             return true;
         }

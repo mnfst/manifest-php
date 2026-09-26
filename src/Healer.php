@@ -83,6 +83,10 @@ final class Healer
             $attemptId = is_string($result['healAttemptId'] ?? null) ? $result['healAttemptId'] : null;
 
             $plan = $send === null ? null : Replay::plan($capture->method, $capture->url, $body, $replayable, $contentType, $result, $capture->headers);
+            // A patched path is filtered like any other call: a retry never goes where the lists forbid.
+            if ($plan !== null && $this->excluded($plan['url'])) {
+                $plan = null;
+            }
             if ($plan === null) {
                 if ($attemptId !== null) {
                     $this->api->reportFailure($attemptId, 'not_attempted', HealApi::NOT_ATTEMPTED);

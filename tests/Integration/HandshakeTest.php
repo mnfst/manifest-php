@@ -77,6 +77,22 @@ final class HandshakeTest extends TestCase
         self::assertCount(2, $this->stub->hellos());
     }
 
+    public function testAnOversizedAnswerIsNeverBuffered(): void
+    {
+        $upstream = new \Mnfst\Tests\Support\StubUpstream();
+        $upstream->start();
+        try {
+            $handshake = new Handshake(Config::resolve('k', $upstream->url));
+            @unlink($handshake->markerPath());
+            $before = memory_get_peak_usage();
+            $handshake->announce();
+            @unlink($handshake->markerPath());
+            self::assertLessThan(4 * 1_048_576, memory_get_peak_usage() - $before);
+        } finally {
+            $upstream->stop();
+        }
+    }
+
     public function testAFailedHandshakeNeverThrows(): void
     {
         (new Handshake(Config::resolve('k', 'http://127.0.0.1:9')))->announce();
