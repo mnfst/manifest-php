@@ -1,0 +1,29 @@
+src/DotEnv.php
+  s_6f64c1294b31c5::t_d3702e779fffdf 1-49
+docs/guide.md
+  s_6f64c1294b31c5::t_2d1eceedb83817 58-60
+tests/Integration/DoctorTest.php
+  s_6f64c1294b31c5::t_d18c112d1bbebd 25-26,34-41,48-57,191-241
+bin/manifest
+  s_6f64c1294b31c5::t_45d8077792e32a 11-13
+README.md
+  s_6f64c1294b31c5::t_2d1eceedb83817 118,130-132
+src/Doctor.php
+  s_6f64c1294b31c5::t_45d8077792e32a 12-25,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9945471aab10d060bb6fa80c244b71956fdda040",
+  "prompts": {},
+  "sessions": {
+    "s_6f64c1294b31c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3865711-d1b6-424f-95c3-1dd78f4091fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}

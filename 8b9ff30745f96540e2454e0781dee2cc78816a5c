@@ -1,0 +1,51 @@
+src/Manifest.php
+  s_de9546b9854ad9::t_f0ea18ea61bd83 51-54
+  s_de9546b9854ad9::t_7ccf9a904fc3db 24-34,46
+src/UrlFilter.php
+  s_de9546b9854ad9::t_a9fbe62b3f6d03 5-105,107-108,111
+  s_de9546b9854ad9::t_a89af78a36079b 1-4,106,109-110,112
+README.md
+  s_de9546b9854ad9::t_4e2152ac68eb02 132-148
+docs/guide.md
+  s_de9546b9854ad9::t_5fa7d14326efef 5,13-14
+src/Config.php
+  s_de9546b9854ad9::t_1d889a69a5d620 8-9,37-47,51-61,67-89
+src/Healer.php
+  s_de9546b9854ad9::t_1257988e74a921 28-29,31,33-34,40,52-54,124-129
+src/Hooks/Cake.php
+  s_de9546b9854ad9::t_54813840893b2b 68
+src/Hooks/Curl.php
+  s_de9546b9854ad9::t_0a0e78796dd6f1 116
+src/Hooks/Guzzle.php
+  s_de9546b9854ad9::t_5a108b7e12ab78 129
+src/Hooks/Symfony.php
+  s_de9546b9854ad9::t_c2db90fd97df98 83-85
+src/Hooks/WordPress.php
+  s_de9546b9854ad9::t_d0a504c40d3e82 63
+src/Response/LazyHealingResponse.php
+  s_de9546b9854ad9::t_ef56c64dbd6d2e 131
+src/functions.php
+  s_de9546b9854ad9::t_79ede4b6786aea 5-16
+tests/Integration/UrlFilterHookTest.php
+  s_de9546b9854ad9::t_2a023d99d975e6 1-140
+tests/Unit/UrlFilterTest.php
+  s_de9546b9854ad9::t_3f210ad704d88a 1-61
+tests/fixtures/url-filter.json
+  s_de9546b9854ad9::t_16c4dc6a153f6c 1-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8b9ff30745f96540e2454e0781dee2cc78816a5c",
+  "prompts": {},
+  "sessions": {
+    "s_de9546b9854ad9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "252ec711-d414-48ae-bddf-22b35395ba43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
