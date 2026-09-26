@@ -5,8 +5,8 @@ namespace Mnfst;
 /**
  * Options resolution: arguments beat environment beats defaults.
  *
- * The surface is deliberately tiny: credentials, server, and a local
- * observability hook. Everything that is policy lives server-side, where it is
+ * The surface is deliberately tiny: credentials, server, a local
+ * observability hook, and the calls Manifest never sees (allowlist / denylist). Everything that is policy lives server-side, where it is
  * editable without a deploy.
  */
 final class Config
@@ -34,17 +34,59 @@ final class Config
         public readonly ?string $apiKey,
         public readonly string $baseUrl,
         public readonly mixed $onHeal = null,
+        /**
+         * Only these calls reach Manifest; null when no allowlist was given (every call is
+         * eligible). An allowlist of only unreadable entries is an empty list: nothing passes.
+         *
+         * @var list<array{host: string, path: ?string}>|null
+         */
+        public readonly ?array $allowlist = null,
+        /** @var list<array{host: string, path: ?string}> these calls never reach Manifest */
+        public readonly array $denylist = [],
+        /** @var list<string> the entries that were dropped, for Manifest::start() to report */
+        public readonly array $ignoredEntries = [],
     ) {
     }
 
-    public static function resolve(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): self
-    {
+    /**
+     * @param list<string>|string|null $allowlist default MNFST_ALLOWLIST, comma-separated
+     * @param list<string>|string|null $denylist default MNFST_DENYLIST, comma-separated
+     */
+    public static function resolve(
+        ?string $apiKey = null,
+        ?string $url = null,
+        ?callable $onHeal = null,
+        array|string|null $allowlist = null,
+        array|string|null $denylist = null,
+    ): self {
         // An empty argument is what a framework's config() yields for an unset or
         // blanked variable (phpunit.xml's `<env name="MNFST_KEY" value=""/>`): unset.
         $key = $apiKey === null ? self::env('MNFST_KEY') : (self::blank($apiKey) ? null : $apiKey);
         $base = (self::blank($url) ? self::env('MNFST_URL') : $url) ?? self::HOSTED_URL;
 
-        return new self($key, rtrim($base, '/'), $onHeal);
+        $allowEntries = self::entries($allowlist, 'MNFST_ALLOWLIST');
+        [$allow, $badAllow] = UrlFilter::rules($allowEntries);
+        [$deny, $badDeny] = UrlFilter::rules(self::entries($denylist, 'MNFST_DENYLIST'));
+
+        return new self(
+            $key,
+            rtrim($base, '/'),
+            $onHeal,
+            $allowEntries === [] ? null : $allow,
+            $deny,
+            [...$badAllow, ...$badDeny],
+        );
+    }
+
+    /**
+     * An option beats its env var, like the key and URL; a blank one is unset and falls back to it.
+     *
+     * @param list<string>|string|null $option
+     * @return list<string>
+     */
+    private static function entries(array|string|null $option, string $env): array
+    {
+        return UrlFilter::entries($option) ?: UrlFilter::entries(self::env($env));
     }
 
     private static function blank(?string $value): bool

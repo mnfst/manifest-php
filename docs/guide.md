@@ -2,7 +2,7 @@
 
 ## Configuration
 
-`manifest()` takes three optional arguments. The key and URL can come from
+`manifest()` takes five optional arguments. All but the callback can come from
 the environment; the callback is supplied in code.
 
 | Argument | Environment | Default |
@@ -10,6 +10,8 @@ the environment; the callback is supplied in code.
 | `$apiKey` | `MNFST_KEY` | none — without it nothing is sent |
 | `$url` | `MNFST_URL` | `https://api.manifest.build` |
 | `$onHeal` | — | none |
+| `$allowlist` | `MNFST_ALLOWLIST` | every call eligible ([entries](../README.md#choosing-which-calls-reach-manifest)) |
+| `$denylist` | `MNFST_DENYLIST` | none excluded |
 
 Environment variables are read from `$_SERVER`, `$_ENV` and `getenv()`, in that
 order, so a key set in a Laravel or Symfony `.env` file is found without any

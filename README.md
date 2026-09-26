@@ -146,6 +146,23 @@ echo $response->status();  // See the 200 OK response.
 
 Check your [Manifest dashboard](https://dashboard.manifest.build) to see all repairs and insights.
 
+## Choosing which calls reach Manifest
+
+Keep calls out of Manifest entirely: they are neither repaired nor tracked, and nothing about them leaves your app. Each entry is a domain or a domain with a path:
+
+```sh
+MNFST_ALLOWLIST=stripe.com                       # only Stripe
+MNFST_ALLOWLIST=stripe.com/v1/payment_intents    # only this Stripe endpoint
+MNFST_DENYLIST=stripe.com/v1/charges,internal.example.com   # never these
+```
+
+- A domain covers its subdomains, with or without a path: `stripe.com` and `stripe.com/v1/charges` both match `api.stripe.com`.
+- A path matches whole segments: `/v1/charges` covers `/v1/charges/ch_123`, not `/v1/charges_export`. Paths are case-sensitive.
+- A scheme, port, query or fragment in an entry is ignored. `*` in a path is not supported yet: the entry is skipped with a warning, and an allowlist made only of skipped entries lets nothing through.
+- The denylist wins over the allowlist. With no allowlist, every call is eligible.
+
+Or in code: `\Mnfst\manifest(denylist: ['stripe.com/v1/charges']);`. An option overrides its environment variable.
+
 ## What is covered
 
 | The app calls an API via… | Covered |
@@ -179,6 +196,7 @@ under the caller's control and are not healed. See [the coverage details](docs/g
 | A call Manifest does not heal, whatever its status | method, scheme, host, port, path, status, timing | query string, headers, bodies |
 | A failure Manifest can heal (a 4xx other than 401, 402, 403 and 429) | URL, headers, request body and error response. Credential values in the query string and headers are replaced by `REDACTED`; credential fields at the top level of the body are left out | the masked values |
 | The retry | nothing: it goes to the original API, through your own client, with the real values | — |
+| A call excluded by [`MNFST_ALLOWLIST` / `MNFST_DENYLIST`](#choosing-which-calls-reach-manifest) | nothing | everything |
 
 One known limit: a secret inside a URL path (a webhook URL, `/bot<token>/`) is
 sent as is. The rules are in [`src/Wire.php`](src/Wire.php) and [CONTRACT.md](CONTRACT.md).
