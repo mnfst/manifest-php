@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/mnfst/manifest-php/compare/v0.5.0...v0.6.0) (2026-09-26)
+
+
+### Features
+
+* choose which calls reach Manifest with MNFST_ALLOWLIST / MNFST_DENYLIST ([#46](https://github.com/mnfst/manifest-php/issues/46)) ([4728657](https://github.com/mnfst/manifest-php/commit/47286571b6208d335c7c24f8fe5b2db084f9be6a))
+
+
+### Bug Fixes
+
+* doctor reads the key from the project's .env files ([#45](https://github.com/mnfst/manifest-php/issues/45)) ([1a238c7](https://github.com/mnfst/manifest-php/commit/1a238c7d92e7ec600a02b580171b72fd558c0a43))
+
 ## [0.5.0](https://github.com/mnfst/manifest-php/compare/v0.4.0...v0.5.0) (2026-09-26)
 
 
