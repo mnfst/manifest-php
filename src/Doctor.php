@@ -9,6 +9,20 @@ namespace Mnfst;
  */
 final class Doctor
 {
+    /**
+     * The configuration the doctor checks: the shell environment first, then
+     * the project's dotenv files, where frameworks tell users to put the key.
+     */
+    public static function config(string $root): Config
+    {
+        $file = DotEnv::read($root);
+
+        return Config::resolve(
+            Config::env('MNFST_KEY') ?? $file['MNFST_KEY'] ?? null,
+            Config::env('MNFST_URL') ?? $file['MNFST_URL'] ?? null,
+        );
+    }
+
     public static function run(array $argv, Config $config, ?string $root = null): int
     {
         $failures = 0;
@@ -16,7 +30,7 @@ final class Doctor
         self::line('Manifest ' . Manifest::VERSION . ' on PHP ' . PHP_VERSION);
 
         if ($config->apiKey === null) {
-            self::line('  key        missing — set MNFST_KEY');
+            self::line('  key        missing — set MNFST_KEY in the shell or in the project\'s .env');
             $failures++;
         } else {
             self::line('  key        ' . self::mask($config->apiKey));

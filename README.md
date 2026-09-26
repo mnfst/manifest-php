@@ -115,7 +115,7 @@ never reported as failures; `MNFST_IN_TESTS=1` opts back in. See
 ## Setup
 
 1. Create a project in your [Manifest dashboard](https://dashboard.manifest.build) and copy its project key.
-2. Set the key as an environment variable:
+2. Set the key as an environment variable, or in the project's `.env` file:
 
 ```sh
 export MNFST_KEY='your-project-key'
@@ -127,8 +127,9 @@ Verify the install from your project directory:
 vendor/bin/manifest doctor
 ```
 
-It masks and validates the key, and checks that each framework the project uses
-has its adapter in place.
+It reads the key from the shell, then from the project's `.env.local`, `.env` or
+`config/.env`. It masks and validates the key, and checks that each framework
+the project uses has its adapter in place.
 
 ## Try it
 
