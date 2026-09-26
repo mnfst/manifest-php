@@ -5,24 +5,27 @@ namespace Mnfst\Tests\Integration;
 use Cake\Http\Client as CakeClient;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\ServerException;
+use GuzzleHttp\HandlerStack;
 use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\Manifest;
+use Mnfst\Symfony\HealingHttpClient;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use Mnfst\Tracking;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\NativeHttpClient;
-use WpOrg\Requests\Requests;
+
+use function Mnfst\Cake\listen;
+use function Mnfst\Guzzle\middleware;
 
 /**
- * Every hook records the calls it does not heal, exactly once, and never the
- * calls it heals or the SDK's own. Installed through manifest() like an app,
- * so all five hooks are live at once.
+ * Every adapter records the calls it does not heal, exactly once, and never
+ * the calls it heals or the SDK's own.
  */
 #[RunTestsInSeparateProcesses]
-final class TrackingHooksTest extends TestCase
+final class TrackingAdaptersTest extends TestCase
 {
     private StubManifest $manifest;
     private StubUpstream $upstream;
@@ -54,6 +57,15 @@ final class TrackingHooksTest extends TestCase
         return new Tracking($config, new HealApi($config));
     }
 
+    /** A client the way an app wires it: its own handler stack, plus the middleware. */
+    private function client(array $config = []): GuzzleClient
+    {
+        $stack = $config['handler'] ?? HandlerStack::create();
+        $stack->push(middleware());
+
+        return new GuzzleClient(['handler' => $stack] + $config);
+    }
+
     /** @return list<array{0: string, 1: int}> path and status of every tracked call */
     private function tracked(): array
     {
@@ -67,7 +79,7 @@ final class TrackingHooksTest extends TestCase
 
     public function testGuzzleTracksWhatItDoesNotHealOnceAndHealsTheRest(): void
     {
-        $client = new GuzzleClient(['http_errors' => false]);
+        $client = $this->client(['http_errors' => false]);
         $client->get($this->upstream->url . '/ping?token=secret');
         $client->get($this->upstream->url . '/unauthorized');
         $client->get($this->upstream->url . '/status/503');
@@ -80,7 +92,7 @@ final class TrackingHooksTest extends TestCase
     public function testGuzzleTracksAServerErrorThatThrows(): void
     {
         try {
-            (new GuzzleClient())->get($this->upstream->url . '/status/502');
+            $this->client()->get($this->upstream->url . '/status/502');
             self::fail('expected a ServerException');
         } catch (ServerException) {
         }
@@ -88,50 +100,9 @@ final class TrackingHooksTest extends TestCase
         self::assertSame([['/status/502', 502]], $this->tracked());
     }
 
-    public function testCakeTracksWhatItDoesNotHeal(): void
-    {
-        (new CakeClient())->get($this->upstream->url . '/ping');
-        (new CakeClient())->get($this->upstream->url . '/unauthorized');
-
-        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
-    }
-
-    public function testSymfonyTracksAResponseWhenItsStatusIsRead(): void
-    {
-        $client = new NativeHttpClient();
-        self::assertSame(200, $client->request('GET', $this->upstream->url . '/ping')->getStatusCode());
-        self::assertSame(503, $client->request('GET', $this->upstream->url . '/status/503')->getStatusCode());
-
-        self::assertSame([['/ping', 200], ['/status/503', 503]], $this->tracked());
-    }
-
-    public function testWordPressTracksWhatItDoesNotHeal(): void
-    {
-        Requests::request($this->upstream->url . '/ping');
-        Requests::request($this->upstream->url . '/unauthorized');
-
-        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
-    }
-
-    public function testRawCurlTracksWhatItDoesNotHealAndCapturesTheRest(): void
-    {
-        foreach (['/ping', '/unauthorized'] as $path) {
-            $ch = curl_init($this->upstream->url . $path);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_exec($ch);
-        }
-        $ch = curl_init($this->upstream->url . '/orders');
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => '{"limit":500}', CURLOPT_HTTPHEADER => ['Content-Type: application/json']]);
-        curl_exec($ch);
-
-        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
-        self::assertCount(1, $this->manifest->heals());
-    }
-
     public function testTheSdkNeverTracksItsOwnCalls(): void
     {
-        (new GuzzleClient(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        $this->client(['http_errors' => false])->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
         $this->tracked();
 
         // The handshake, the heal and the tracked-call send all went to Manifest; none was recorded.
@@ -142,12 +113,40 @@ final class TrackingHooksTest extends TestCase
     public function testAPausedProjectStillRecordsItsHealableFailures(): void
     {
         $this->manifest->setDisabled(true);
-        (new GuzzleClient(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
-        (new GuzzleClient(['http_errors' => false]))->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        $this->client(['http_errors' => false])->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
+        $this->client(['http_errors' => false])->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]]);
         $this->manifest->setDisabled(false);
         @unlink((new HealApi(Config::resolve('k', $this->manifest->url)))->backoffPath());
 
         // The first went to heal and was refused (project_disabled); the second found the pause and was recorded.
         self::assertSame([['/orders', 400]], $this->tracked());
+    }
+
+    public function testCakeTracksWhatItDoesNotHeal(): void
+    {
+        listen();
+        (new CakeClient())->get($this->upstream->url . '/ping');
+        (new CakeClient())->get($this->upstream->url . '/unauthorized');
+
+        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
+    }
+
+    public function testSymfonyTracksAResponseWhenItsStatusIsRead(): void
+    {
+        $client = new HealingHttpClient(new NativeHttpClient());
+        self::assertSame(200, $client->request('GET', $this->upstream->url . '/ping')->getStatusCode());
+        self::assertSame(503, $client->request('GET', $this->upstream->url . '/status/503')->getStatusCode());
+
+        self::assertSame([['/ping', 200], ['/status/503', 503]], $this->tracked());
+    }
+
+    public function testWordPressTracksWhatItDoesNotHeal(): void
+    {
+        require_once __DIR__ . '/../Support/wordpress.php';
+        \Mnfst\WordPress\listen();
+        wp_remote_get($this->upstream->url . '/ping');
+        wp_remote_get($this->upstream->url . '/unauthorized');
+
+        self::assertSame([['/ping', 200], ['/unauthorized', 401]], $this->tracked());
     }
 }

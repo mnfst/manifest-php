@@ -4,58 +4,45 @@ namespace Mnfst;
 
 /**
  * Verify an install from the project directory. It resolves the SDK version,
- * masks and validates the key against the handshake endpoint, and reports which
- * coverage level is active.
+ * masks and validates the key against the handshake endpoint, and checks that
+ * each framework the project uses has its adapter wired.
  */
 final class Doctor
 {
-    public static function run(array $argv, Config $config): int
+    public static function run(array $argv, Config $config, ?string $root = null): int
     {
         $failures = 0;
 
         self::line('Manifest ' . Manifest::VERSION . ' on PHP ' . PHP_VERSION);
 
         if ($config->apiKey === null) {
-            self::line('  key       missing — set MNFST_KEY');
+            self::line('  key        missing — set MNFST_KEY');
             $failures++;
         } else {
-            self::line('  key       ' . self::mask($config->apiKey));
+            self::line('  key        ' . self::mask($config->apiKey));
         }
-
-        if (Manifest::hasFullCoverage()) {
-            self::line('  coverage  full coverage — every HTTP client is instrumented');
-        } else {
-            self::line('  coverage  none — the opentelemetry extension is not installed, so nothing is instrumented');
-            self::line('            add it with: pecl install opentelemetry');
-            $failures++;
-        }
-
-        self::line('  loading   ' . (self::loadsFirst()
-            ? 'auto_prepend_file is set'
-            : 'not preloaded — call manifest() before your first HTTP call, or set auto_prepend_file'));
 
         if ($config->apiKey !== null) {
             $failures += self::reportProject($config);
         }
 
-        return $failures > 0 ? 1 : 0;
-    }
+        foreach (Frameworks::inspect($root ?? (string) getcwd()) as $framework) {
+            self::line('  ' . str_pad($framework['name'], 10) . ' ' . $framework['line']);
+            if (!$framework['ok']) {
+                $failures++;
+            }
+        }
+        self::line('  guzzle     your own clients: push \Mnfst\Guzzle\middleware() on their handler stack');
+        self::line('  not seen   raw curl_* calls, file_get_contents, and Guzzle clients built inside libraries');
 
-    /**
-     * A hook cannot attach to a function that has already been called, so the
-     * SDK has to load before the app's first HTTP call. auto_prepend_file is
-     * the only way to guarantee that.
-     */
-    private static function loadsFirst(): bool
-    {
-        return (string) ini_get('auto_prepend_file') !== '';
+        return $failures > 0 ? 1 : 0;
     }
 
     private static function reportProject(Config $config): int
     {
         $answer = self::hello($config);
         if ($answer === null) {
-            self::line('  server    unreachable at ' . $config->baseUrl);
+            self::line('  server     unreachable at ' . $config->baseUrl);
 
             return 1;
         }
@@ -67,13 +54,13 @@ final class Doctor
         // unreachable server sends the operator after the wrong problem.
         if ($status !== 200) {
             self::line($status === 403 && ($hello['error'] ?? null) === 'project_disabled'
-                ? '  server    accepted the key, but healing is disabled for this project'
-                : '  server    rejected the key (HTTP ' . $status . ') at ' . $config->baseUrl);
+                ? '  server     accepted the key, but healing is disabled for this project'
+                : '  server     rejected the key (HTTP ' . $status . ') at ' . $config->baseUrl);
 
             return 1;
         }
 
-        self::line('  server    accepted the key at ' . $config->baseUrl);
+        self::line('  server     accepted the key at ' . $config->baseUrl);
 
         return 0;
     }

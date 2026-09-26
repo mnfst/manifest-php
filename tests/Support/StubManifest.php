@@ -22,7 +22,7 @@ class StubManifest
             $port = random_int(9200, 9899);
             $token = bin2hex(random_bytes(8));
             $this->process = proc_open(
-                sprintf('exec php -S 127.0.0.1:%d %s', $port, escapeshellarg($this->routerPath())),
+                sprintf('exec %s -S 127.0.0.1:%d %s', escapeshellarg(PHP_BINARY), $port, escapeshellarg($this->routerPath())),
                 [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
                 $pipes,
                 null,
@@ -129,9 +129,7 @@ class StubManifest
     /**
      * Ready means OUR server answers on the port: another test's stub may
      * still be dying on it, and the wrong one would answer 404 to every
-     * route. Deliberately NOT curl: a curl_exec here would happen before the
-     * SDK's hooks are installed, and an internal function that has already
-     * been called cannot be hooked afterwards (hook rule 7).
+     * route.
      */
     private function waitUntilReady(string $url, string $token): bool
     {

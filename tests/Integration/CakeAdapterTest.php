@@ -3,17 +3,17 @@
 namespace Mnfst\Tests\Integration;
 
 use Cake\Http\Client;
-use Mnfst\Config;
-use Mnfst\HealApi;
 use Mnfst\HealEvent;
-use Mnfst\Hooks\Cake;
 use Mnfst\Tests\Support\StubManifest;
 use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 
+use function Mnfst\Cake\listen;
+use function Mnfst\manifest;
+
 #[RunTestsInSeparateProcesses]
-final class CakeHookTest extends TestCase
+final class CakeAdapterTest extends TestCase
 {
     private StubManifest $manifest;
     private StubUpstream $upstream;
@@ -33,10 +33,10 @@ final class CakeHookTest extends TestCase
             'healedRequest' => ['body' => ['limit' => 100]],
         ]);
 
-        $config = Config::resolve('k', $this->manifest->url, function (HealEvent $event): void {
+        listen();
+        manifest('k', $this->manifest->url, function (HealEvent $event): void {
             $this->events[] = $event;
         });
-        Cake::install($config, new HealApi($config));
     }
 
     /** @param array<string, mixed> $healedRequest */
@@ -248,5 +248,33 @@ final class CakeHookTest extends TestCase
         (new Client())->get($this->upstream->url . '/search?query=Batman&page=1&page=2');
         self::assertSame('no_patch', $this->events[1]->healStatus);
         self::assertNull($this->events[1]->replayStatusCode);
+    }
+
+    public function testARedirectIsTrackedOnceAtItsTarget(): void
+    {
+        $response = (new Client())->get($this->upstream->url . '/redirect', [], ['redirect' => 2]);
+        self::assertSame(200, $response->getStatusCode());
+
+        $config = \Mnfst\Config::resolve('k', $this->manifest->url);
+        (new \Mnfst\Tracking($config, new \Mnfst\HealApi($config)))->flush();
+
+        self::assertSame(['/ping'], array_map(
+            fn (array $call): string => substr($call['url'], strlen($this->upstream->url)),
+            $this->manifest->tracked(),
+        ));
+        self::assertSame([], $this->manifest->heals());
+    }
+
+    public function testThePluginWiresTheAdapterAndStartsTheSdk(): void
+    {
+        \Cake\Core\Configure::write('Manifest', ['key' => 'k', 'url' => $this->manifest->url]);
+        $app = $this->createMock(\Cake\Core\PluginApplicationInterface::class);
+
+        (new \Mnfst\Cake\ManifestPlugin())->bootstrap($app);
+        (new \Mnfst\Cake\ManifestPlugin())->bootstrap($app);   // a second boot in the same process
+
+        $response = (new Client())->post($this->upstream->url . '/orders', json_encode(['limit' => 500]), ['type' => 'json']);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertCount(1, $this->manifest->heals());
     }
 }

@@ -7,7 +7,7 @@
          failOnNotice="true"
          failOnDeprecation="true">
   <php>
-    <!-- The SDK's own tests drive the hooks through manifest(); opt back in. -->
+    <!-- The SDK's own tests start it through manifest(); opt back in. -->
     <env name="MNFST_IN_TESTS" value="1"/>
   </php>
   <testsuites>

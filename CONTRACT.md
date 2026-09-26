@@ -63,13 +63,13 @@ Reports are best effort and bounded at 5 seconds. The SDK sends the failed retry
 
 ## Tracked requests
 
-Every call a hook sees and does not send to `POST /v1/heal`, whatever its status (2xx, 3xx, 401, 402, 403, 429, 5xx, and a 4xx while healing is paused), is recorded and sent in batches to `POST /v1/requests`:
+Every call an adapter sees and does not send to `POST /v1/heal`, whatever its status (2xx, 3xx, 401, 402, 403, 429, 5xx, and a 4xx while healing is paused), is recorded and sent in batches to `POST /v1/requests`:
 
 ```json
 {"requests":[{"traceId":"a3ebec173ba83875ad12658ef5f0e115","method":"GET","url":"https://api.example.com/orders/42","statusCode":200,"responseTimeMs":80,"occurredAt":"2026-09-23T11:23:50.790Z"}]}
 ```
 
-Metadata only. The URL carries scheme, host, port and path: no query string, userinfo or fragment. No headers and no request or response body are sent. Methods are upper-cased; a record whose method exceeds 16 characters or whose URL exceeds 4,096 is not sent. A call sent to `/v1/heal`, a heal's retry and the SDK's own calls are not tracked. Each call is recorded once, by the hook of the client that made it (raw curl skips calls made through Guzzle, Cake, Symfony or WordPress). A Symfony response is recorded when the app reads its status.
+Metadata only. The URL carries scheme, host, port and path: no query string, userinfo or fragment. No headers and no request or response body are sent. Methods are upper-cased; a record whose method exceeds 16 characters or whose URL exceeds 4,096 is not sent. A call sent to `/v1/heal`, a heal's retry and the SDK's own calls are not tracked. Each call is recorded once, by the adapter of the client that made it; a Guzzle client with the middleware twice records it once. A Symfony response is recorded when the app reads its status.
 
 PHP keeps nothing between web requests, so calls are not batched in memory. Recording appends one JSON line, under an exclusive lock, to a spool file in the temp directory shared by every PHP process of the same Unix user on the server (`mnfst-requests-<hash>.jsonl`, created `0600` without changing the process umask, capped at 2 MB; past the cap, calls are dropped). A writer re-checks after locking that it still holds the spool, so a line is never written into a spool another process has just claimed. Nothing reaches the network on the caller's path.
 
@@ -80,12 +80,11 @@ Known limits: a long-running process (Laravel Octane, RoadRunner, Swoole, `queue
 ## Runtime behavior
 
 All supported clients share the same capture, planning, outcome, and callback flow.
-Raw curl uses that flow without a replay sender and closes any served attempt as
-`not_attempted`. `onHeal` receives a masked URL and the result after each captured
-failure; callback exceptions are logged and cannot escape into application code.
+`onHeal` receives a masked URL and the result after each captured failure;
+callback exceptions are logged and cannot escape into application code.
 Manifest API answers are read with a 1 MB limit.
 
-PHPUnit and Pest are silent by default, including standard runner commands loaded
-through `auto_prepend_file`. `MNFST_IN_TESTS=1` explicitly enables integration-test
-capture. Repeated installation refreshes configuration without duplicate hooks or
-warnings. Clearing the key disables existing hooks as well as new installations.
+PHPUnit and Pest are silent by default. `MNFST_IN_TESTS=1` explicitly enables
+integration-test capture. Repeated starts refresh configuration without
+duplicate adapters or warnings. Clearing the key turns the adapters off. The
+handshake is sent once the SDK is started and at least one adapter is in place.

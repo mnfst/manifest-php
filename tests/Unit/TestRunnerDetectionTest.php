@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 final class TestRunnerDetectionTest extends TestCase
 {
-    public function testPrependRecognizesTestCommandsBeforeTheirBootstrap(): void
+    public function testRecognizesTestCommandsBeforeTheirBootstrap(): void
     {
         foreach ([
             [['vendor/bin/phpunit'], true],

@@ -6,7 +6,6 @@ Thanks for your interest in contributing to the Manifest PHP SDK!
 
 - PHP 8.2+
 - Composer 2
-- Docker, to run the test suite (it needs the `opentelemetry` extension)
 
 ## Getting Started
 
@@ -20,18 +19,16 @@ composer install
 
 ## Development
 
-The test suite needs the `opentelemetry` extension, which is why it runs in
-Docker:
+The suite needs no PHP extension beyond `curl`:
 
-```bash
-docker build -f Dockerfile.test -t manifest-php-test .
-docker run --rm -v "$PWD":/app manifest-php-test bash -c "composer install && composer test"
+```sh
+composer install
+composer test
 ```
 
-With the extension already installed locally, `composer test` runs PHPUnit
-directly. Hooks are process-global and cannot be removed, so every test that
-installs one runs in its own process. Integration tests use local stub servers
-and never require a live Manifest key.
+Manifest's state is process-global, so every test that starts it runs in its
+own process. Integration tests use local stub servers and never require a
+live Manifest key.
 
 CI runs PHP 8.2 to 8.5 with Guzzle 7 and Laravel, plus a separate Guzzle 8 job,
 and checks `composer validate --strict`.
@@ -60,13 +57,13 @@ publishes from the tag. Nothing is released before that pull request is merged.
 
 The SDK works with:
 - Laravel's `Http` facade
-- Guzzle, including clients built inside a third-party library
-- CakePHP's `Cake\Http\Client`
-- Symfony's `HttpClient`, curl and native transports
-- WordPress `wp_remote_*` / `WpOrg\Requests`
+- CakePHP's `Cake\Http\Client` (5.1+)
+- Symfony's `HttpClient`, including scoped clients
+- WordPress `wp_remote_*`
+- Any Guzzle client that carries the middleware
 
-Calls made with raw `curl_*` are captured but never healed: the extension can
-observe an internal function but cannot replace its return value. See
+Raw `curl_*` clients and Guzzle clients built inside a library that does not
+let you pass your own are not seen. See
 [the coverage details](docs/guide.md#supported-traffic).
 
 ## License

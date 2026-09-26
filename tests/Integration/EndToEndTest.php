@@ -4,6 +4,7 @@ namespace Mnfst\Tests\Integration;
 
 use Cake\Http\Client as CakeClient;
 use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\HandlerStack;
 use Mnfst\Config;
 use Mnfst\HealApi;
 use Mnfst\Handshake;
@@ -12,19 +13,15 @@ use Mnfst\Tests\Support\StubUpstream;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpClient\HttpClient as SymfonyHttpClient;
-use WpOrg\Requests\Requests;
 
+use function Mnfst\Guzzle\middleware;
 use function Mnfst\manifest;
 
 /**
- * End to end through the public entry point: manifest() installs the real
- * hooks, a genuine client call to a failing upstream is captured, healed by
- * the stub server, replayed, and the app receives the healed 200 with the
- * outcome reported. One test per supported client, each in its own process
- * because the hooks are process-global.
- *
- * The per-hook integration tests call Hooks\X::install() directly; these prove
- * the whole chain works the way a user wires it up (manifest(), then requests).
+ * End to end the way a user wires it: manifest(), an adapter, then a genuine
+ * call to a failing upstream that is captured, healed by the stub server,
+ * replayed, and reported. One test per supported client, each in its own
+ * process because Manifest's state is process-global.
  */
 #[RunTestsInSeparateProcesses]
 final class EndToEndTest extends TestCase
@@ -35,7 +32,7 @@ final class EndToEndTest extends TestCase
 
     protected function setUp(): void
     {
-        // phpunit.xml sets MNFST_IN_TESTS=1, so manifest() installs its hooks here.
+        // phpunit.xml sets MNFST_IN_TESTS=1, so manifest() starts here.
         $this->manifest = new StubManifest();
         $this->manifest->start();
         $this->upstream = new StubUpstream();
@@ -58,6 +55,15 @@ final class EndToEndTest extends TestCase
         $this->upstream->stop();
     }
 
+    /** A client the way an app wires it: its own handler stack, plus the middleware. */
+    private function client(array $config = []): GuzzleClient
+    {
+        $stack = $config['handler'] ?? HandlerStack::create();
+        $stack->push(middleware());
+
+        return new GuzzleClient(['handler' => $stack] + $config);
+    }
+
     private function assertHealed(int $status, string $body): void
     {
         self::assertSame(200, $status, 'the app receives the healed response');
@@ -69,21 +75,27 @@ final class EndToEndTest extends TestCase
 
     public function testGuzzleEndToEnd(): void
     {
-        $response = (new GuzzleClient(['http_errors' => false]))
+        $response = ($this->client(['http_errors' => false]))
             ->post($this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
 
         $this->assertHealed($response->getStatusCode(), (string) $response->getBody());
     }
 
-    public function testLaravelEndToEnd(): void
+    public function testAnUnhealableFailureIsReturnedUnchangedEndToEnd(): void
     {
-        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory());
-        $response = \Illuminate\Support\Facades\Http::post($this->upstream->url.'/orders', ['limit' => 500]);
-        $this->assertHealed($response->status(), $response->body());
+        $this->manifest->setResult(['status' => 'no_patch']);
+
+        $response = ($this->client(['http_errors' => false]))
+            ->post($this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertCount(1, $this->manifest->heals());
+        self::assertSame([], $this->manifest->outcomes(), 'no retry, nothing to report');
     }
 
     public function testCakeEndToEnd(): void
     {
+        \Mnfst\Cake\listen();
         $response = (new CakeClient())->post($this->upstream->url.'/orders', json_encode(['limit' => 500]), ['type' => 'json']);
 
         $this->assertHealed($response->getStatusCode(), $response->getStringBody());
@@ -91,27 +103,18 @@ final class EndToEndTest extends TestCase
 
     public function testSymfonyEndToEnd(): void
     {
-        $response = SymfonyHttpClient::create()->request('POST', $this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
+        $client = new \Mnfst\Symfony\HealingHttpClient(SymfonyHttpClient::create());
+        $response = $client->request('POST', $this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
 
         $this->assertHealed($response->getStatusCode(), $response->getContent());
     }
 
     public function testWordPressEndToEnd(): void
     {
-        $response = Requests::post($this->upstream->url.'/orders', ['Content-Type' => 'application/json'], json_encode(['limit' => 500]));
+        require_once __DIR__ . '/../Support/wordpress.php';
+        \Mnfst\WordPress\listen();
+        $response = wp_remote_post($this->upstream->url.'/orders', ['headers' => ['Content-Type' => 'application/json'], 'body' => json_encode(['limit' => 500])]);
 
-        $this->assertHealed($response->status_code, (string) $response->body);
-    }
-
-    public function testAnUnhealableFailureIsReturnedUnchangedEndToEnd(): void
-    {
-        $this->manifest->setResult(['status' => 'no_patch']);
-
-        $response = (new GuzzleClient(['http_errors' => false]))
-            ->post($this->upstream->url.'/orders', ['json' => ['limit' => 500]]);
-
-        self::assertSame(400, $response->getStatusCode());
-        self::assertCount(1, $this->manifest->heals());
-        self::assertSame([], $this->manifest->outcomes(), 'no retry, nothing to report');
+        $this->assertHealed($response['response']['code'], (string) $response['body']);
     }
 }
