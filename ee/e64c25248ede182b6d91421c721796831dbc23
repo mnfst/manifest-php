@@ -1,0 +1,69 @@
+src/Manifest.php
+  s_de9546b9854ad9::t_f0ea18ea61bd83 50-53
+  s_de9546b9854ad9::t_7ccf9a904fc3db 24-33,44
+src/UrlFilter.php
+  s_de9546b9854ad9::t_a9fbe62b3f6d03 5-34,57-110,112-126,128-129,132
+  s_de9546b9854ad9::t_a89af78a36079b 1-4,127,130-131,133
+  s_067891c79a3ecd::t_77496ea6412e4a 35-56,111
+README.md
+  s_de9546b9854ad9::t_4e2152ac68eb02 148-161,163-165
+  s_d818a26c4e3030::t_35c3a72bcb0f0d 162
+docs/guide.md
+  s_de9546b9854ad9::t_5fa7d14326efef 5,13-14
+src/Config.php
+  s_de9546b9854ad9::t_1d889a69a5d620 8-9,37-47,51-61,67-89
+src/Healer.php
+  s_de9546b9854ad9::t_1257988e74a921 28-29,31,33-34,40,52-54,128-133
+  s_067891c79a3ecd::t_8697aaf45aafdc 86-89
+src/Response/LazyHealingResponse.php
+  s_de9546b9854ad9::t_ef56c64dbd6d2e 131
+src/functions.php
+  s_de9546b9854ad9::t_79ede4b6786aea 5-16
+tests/Integration/UrlFilterHookTest.php
+  s_de9546b9854ad9::t_2a023d99d975e6 1-6,8-11,13-18,22-23,25-38,40-52,58-64,73-81,84-88,92-93,95-96,108-109,113-119,123-127,136-138
+  s_de9546b9854ad9::t_097424486c7e03 7,12,19-21,24,39,53-57,65-72,82-83,89-91,94,110-112,120-122,128-135
+  s_d818a26c4e3030::t_807bbaa4f37c61 97-107
+tests/Unit/UrlFilterTest.php
+  s_de9546b9854ad9::t_3f210ad704d88a 1-61
+tests/fixtures/url-filter.json
+  s_de9546b9854ad9::t_16c4dc6a153f6c 1-16,19-55,65-66
+  s_d818a26c4e3030::t_2ad83f14dd1608 17-18,56-64
+src/Handshake.php
+  s_067891c79a3ecd::t_58d31f766249b5 68-70
+tests/Integration/HandshakeTest.php
+  s_d818a26c4e3030::t_87b2bf443a35f1 80-95
+tests/Support/upstream-router.php
+  s_d818a26c4e3030::t_bb0efff6652be9 27-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eee64c25248ede182b6d91421c721796831dbc23",
+  "prompts": {},
+  "sessions": {
+    "s_067891c79a3ecd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfaa0496-d823-4e52-90fd-bd032e7cc33d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    },
+    "s_d818a26c4e3030": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a03df1d-91b9-4237-ada0-b7cb17ab89ea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    },
+    "s_de9546b9854ad9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "252ec711-d414-48ae-bddf-22b35395ba43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
