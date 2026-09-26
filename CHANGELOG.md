@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/mnfst/manifest-php/compare/v0.6.0...v0.6.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* close the critical and high review findings ([#48](https://github.com/mnfst/manifest-php/issues/48)) ([e318d35](https://github.com/mnfst/manifest-php/commit/e318d35f563c31426afc77ffd74dd2e4f8116791))
+
 ## [0.6.0](https://github.com/mnfst/manifest-php/compare/v0.5.0...v0.6.0) (2026-09-26)
 
 
