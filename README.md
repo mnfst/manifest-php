@@ -4,7 +4,7 @@
 
 # Manifest for PHP
 
-**Keep every API connection in your app up and running.**
+**The API resilience layer for your PHP apps.**
 
 [![CI](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mnfst/manifest-php/actions/workflows/ci.yml)
 [![Packagist version](https://img.shields.io/packagist/v/mnfst/manifest-php?label=Packagist)](https://packagist.org/packages/mnfst/manifest-php)
@@ -14,13 +14,11 @@
 
 ## What is Manifest
 
-Manifest lets you monitor all your API connections and make them more reliable.
+Manifest is the API resilience layer for your apps and agents. It works with every API they call: external services, your internal APIs and MCP tools.
 
-* ⏰ **Stay ahead of breaking changes**: get warned before an API you depend on changes, so nothing breaks by surprise.
-* 🎯 **Never lose a request to a bad call**: failed requests are fixed and sent again on the fly, before your users notice.
-* 📡 **Know exactly how your APIs behave**: every call, every provider, every issue, live in one dashboard.
-
-Works with internal APIs, external services and agent tools.
+* 🗺️ **See every API your app depends on**, and how reliable each one is.
+* 🎯 **Repair failed API requests on the fly**, so your app keeps working.
+* 🛠️ **Know what to fix in your code**, with a prompt for your coding agent.
 
 ## How it works
 
@@ -135,19 +133,17 @@ the project uses has its adapter in place.
 
 ## Try it
 
-Send a request that would normally fail. Manifest catches it, repairs it, and retries:
+Send a request that fails with a 4xx error, such as a value the API rejects:
 
 ```php
 use Illuminate\Support\Facades\Http;
 
 $response = Http::post('https://api.example.com/orders', [
-    'limit' => 500,   // Invalid? Manifest fixes it and retries.
+    'limit' => 500,   // rejected by the API
 ]);
-
-echo $response->status();  // See the 200 OK response.
 ```
 
-Check your [Manifest dashboard](https://dashboard.manifest.build) to see all repairs and insights.
+The failed request appears in your [Manifest dashboard](https://dashboard.manifest.build), grouped with others like it in an issue. Once Manifest has a patch for that error, the next request that fails the same way is repaired and retried, and your app receives the answer to the retry.
 
 ## Choosing which calls reach Manifest
 
