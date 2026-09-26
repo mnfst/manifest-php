@@ -8,4 +8,8 @@ foreach ([__DIR__ . '/../../../autoload.php', __DIR__ . '/../vendor/autoload.php
     }
 }
 
-exit(Mnfst\Doctor::run($argv, Mnfst\Config::resolve()));
+$root = (string) getcwd();
+
+[$config, $keyFrom] = Mnfst\Doctor::config($root);
+
+exit(Mnfst\Doctor::run($argv, $config, $root, $keyFrom));

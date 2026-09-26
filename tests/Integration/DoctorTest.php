@@ -22,8 +22,8 @@ final class DoctorTest extends TestCase
         $this->stub->stop();
     }
 
-    /** @return array{0: int, 1: string} */
-    private function doctor(?string $key, array $files = []): array
+    /** @param array<string, string> $files */
+    private static function project(array $files): string
     {
         $root = sys_get_temp_dir() . '/mnfst-project-' . bin2hex(random_bytes(4));
         foreach ($files as $path => $content) {
@@ -31,8 +31,27 @@ final class DoctorTest extends TestCase
             file_put_contents($root . '/' . $path, $content);
         }
         @mkdir($root, 0777, true);
+
+        return $root;
+    }
+
+    /** @return array{0: int, 1: string} */
+    private function doctor(?string $key, array $files = []): array
+    {
+        $root = self::project($files);
         ob_start();
         $code = Doctor::run(['doctor'], Config::resolve($key, $this->stub->url), $root);
+
+        return [$code, (string) ob_get_clean()];
+    }
+
+    /** @return array{0: int, 1: string} the doctor as bin/manifest runs it: configuration read from the project */
+    private function doctorIn(array $files): array
+    {
+        $root = self::project($files);
+        ob_start();
+        [$config, $keyFrom] = Doctor::config($root);
+        $code = Doctor::run(['doctor'], $config, $root, $keyFrom);
 
         return [$code, (string) ob_get_clean()];
     }
@@ -169,5 +188,58 @@ final class DoctorTest extends TestCase
         [$code] = $this->doctor('mnfx_valid', ['wp-config.php' => '<?php',
             'wp-content/mu-plugins/manifest.php' => '<?php \Mnfst\WordPress\listen();']);
         self::assertSame(0, $code);
+    }
+
+    public function testReadsTheKeyFromTheProjectDotEnv(): void
+    {
+        [$code, $output] = $this->doctorIn(['.env' => "APP_NAME=demo\nMNFST_KEY=mnfx_valid\nMNFST_URL={$this->stub->url}\n"]);
+        self::assertSame(0, $code);
+        self::assertStringContainsString('accepted the key', $output);
+    }
+
+    public function testEnvLocalWinsOverEnv(): void
+    {
+        [, $output] = $this->doctorIn([
+            '.env' => "MNFST_KEY=mnfx_from_base\nMNFST_URL={$this->stub->url}\n",
+            '.env.local' => "MNFST_KEY=mnfx_from_local\n",
+        ]);
+        self::assertStringContainsString('mnfx********al (from .env.local)', $output, 'Symfony: .env.local overrides .env');
+    }
+
+    public function testReadsCakeConfigDotEnvWithExportAndQuotes(): void
+    {
+        [$code, $output] = $this->doctorIn(['config/.env' => "export MNFST_KEY=\"mnfx_valid\"\nexport MNFST_URL='{$this->stub->url}'\n"]);
+        self::assertSame(0, $code);
+        self::assertStringContainsString('(from config/.env)', $output, 'the output names the file it opened');
+        self::assertStringContainsString('accepted the key', $output);
+    }
+
+    public function testCommentsAreNotValues(): void
+    {
+        [$code, $output] = $this->doctorIn(['.env' => "# MNFST_KEY=mnfx_commented\r\nMNFST_KEY=mnfx_valid # the project key\r\nMNFST_URL={$this->stub->url}\r\n"]);
+        self::assertSame(0, $code);
+        self::assertStringContainsString('mnfx********id', $output);
+    }
+
+    public function testTheShellWinsOverTheProjectDotEnv(): void
+    {
+        putenv('MNFST_KEY=mnfx_shell_key');
+        putenv('MNFST_URL=' . $this->stub->url);
+        try {
+            [$code, $output] = $this->doctorIn(['.env' => "MNFST_KEY=mnfx_file_key\nMNFST_URL=http://127.0.0.1:9\n"]);
+        } finally {
+            putenv('MNFST_KEY');
+            putenv('MNFST_URL');
+        }
+        self::assertSame(0, $code, 'the URL from the shell was used, not the unreachable one in .env');
+        self::assertStringContainsString('mnfx********ey', $output);
+        self::assertStringNotContainsString('(from', $output, 'a key from the shell names no file');
+    }
+
+    public function testAMissingKeyPointsAtBothPlaces(): void
+    {
+        [$code, $output] = $this->doctorIn([]);
+        self::assertSame(1, $code);
+        self::assertStringContainsString('.env', $output);
     }
 }
