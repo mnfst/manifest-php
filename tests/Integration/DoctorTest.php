@@ -50,7 +50,8 @@ final class DoctorTest extends TestCase
     {
         $root = self::project($files);
         ob_start();
-        $code = Doctor::run(['doctor'], Doctor::config($root), $root);
+        [$config, $keyFrom] = Doctor::config($root);
+        $code = Doctor::run(['doctor'], $config, $root, $keyFrom);
 
         return [$code, (string) ob_get_clean()];
     }
@@ -202,19 +203,20 @@ final class DoctorTest extends TestCase
             '.env' => "MNFST_KEY=mnfx_from_base\nMNFST_URL={$this->stub->url}\n",
             '.env.local' => "MNFST_KEY=mnfx_from_local\n",
         ]);
-        self::assertStringContainsString('mnfx********al', $output, 'Symfony: .env.local overrides .env');
+        self::assertStringContainsString('mnfx********al (from .env.local)', $output, 'Symfony: .env.local overrides .env');
     }
 
     public function testReadsCakeConfigDotEnvWithExportAndQuotes(): void
     {
         [$code, $output] = $this->doctorIn(['config/.env' => "export MNFST_KEY=\"mnfx_valid\"\nexport MNFST_URL='{$this->stub->url}'\n"]);
         self::assertSame(0, $code);
+        self::assertStringContainsString('(from config/.env)', $output, 'the output names the file it opened');
         self::assertStringContainsString('accepted the key', $output);
     }
 
     public function testCommentsAreNotValues(): void
     {
-        [$code, $output] = $this->doctorIn(['.env' => "# MNFST_KEY=mnfx_commented\nMNFST_KEY=mnfx_valid # the project key\nMNFST_URL={$this->stub->url}\n"]);
+        [$code, $output] = $this->doctorIn(['.env' => "# MNFST_KEY=mnfx_commented\r\nMNFST_KEY=mnfx_valid # the project key\r\nMNFST_URL={$this->stub->url}\r\n"]);
         self::assertSame(0, $code);
         self::assertStringContainsString('mnfx********id', $output);
     }
@@ -231,6 +233,7 @@ final class DoctorTest extends TestCase
         }
         self::assertSame(0, $code, 'the URL from the shell was used, not the unreachable one in .env');
         self::assertStringContainsString('mnfx********ey', $output);
+        self::assertStringNotContainsString('(from', $output, 'a key from the shell names no file');
     }
 
     public function testAMissingKeyPointsAtBothPlaces(): void

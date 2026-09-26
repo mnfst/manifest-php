@@ -57,7 +57,9 @@ vendor/bin/manifest doctor
 
 It reads `MNFST_KEY` and `MNFST_URL` from the shell first, then from the
 project's `.env.local`, `.env` or `config/.env` (the first file that sets a
-variable wins), the files Laravel, Symfony and CakePHP keep them in.
+variable wins), the files Laravel, Symfony and CakePHP keep them in. A key
+read from a file is printed with that file's name, `(from .env)`: your app
+loads only the files its framework does, so check it is one of them.
 It prints the SDK version, the masked key, whether the server accepts it (when
 a key is set), one line per framework the project uses saying whether its
 adapter is wired, and two reminder lines: how to wire your own Guzzle clients,

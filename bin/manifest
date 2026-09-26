@@ -10,4 +10,6 @@ foreach ([__DIR__ . '/../../../autoload.php', __DIR__ . '/../vendor/autoload.php
 
 $root = (string) getcwd();
 
-exit(Mnfst\Doctor::run($argv, Mnfst\Doctor::config($root), $root));
+[$config, $keyFrom] = Mnfst\Doctor::config($root);
+
+exit(Mnfst\Doctor::run($argv, $config, $root, $keyFrom));

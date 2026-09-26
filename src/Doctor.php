@@ -12,18 +12,26 @@ final class Doctor
     /**
      * The configuration the doctor checks: the shell environment first, then
      * the project's dotenv files, where frameworks tell users to put the key.
+     * Also returns the file the key came from, null when it came from the
+     * shell or is missing, so the output says which file was opened.
+     *
+     * @return array{0: Config, 1: ?string}
      */
-    public static function config(string $root): Config
+    public static function config(string $root): array
     {
         $file = DotEnv::read($root);
+        $shellKey = Config::env('MNFST_KEY');
 
-        return Config::resolve(
-            Config::env('MNFST_KEY') ?? $file['MNFST_KEY'] ?? null,
-            Config::env('MNFST_URL') ?? $file['MNFST_URL'] ?? null,
-        );
+        return [
+            Config::resolve(
+                $shellKey ?? $file['MNFST_KEY'][0] ?? null,
+                Config::env('MNFST_URL') ?? $file['MNFST_URL'][0] ?? null,
+            ),
+            $shellKey === null ? ($file['MNFST_KEY'][1] ?? null) : null,
+        ];
     }
 
-    public static function run(array $argv, Config $config, ?string $root = null): int
+    public static function run(array $argv, Config $config, ?string $root = null, ?string $keyFrom = null): int
     {
         $failures = 0;
 
@@ -33,7 +41,7 @@ final class Doctor
             self::line('  key        missing — set MNFST_KEY in the shell or in the project\'s .env');
             $failures++;
         } else {
-            self::line('  key        ' . self::mask($config->apiKey));
+            self::line('  key        ' . self::mask($config->apiKey) . ($keyFrom === null ? '' : ' (from ' . $keyFrom . ')'));
         }
 
         if ($config->apiKey !== null) {
