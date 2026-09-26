@@ -4,7 +4,7 @@ namespace Mnfst;
 
 final class Manifest
 {
-    public const VERSION = '0.4.0'; // x-release-please-version
+    public const VERSION = '0.5.0'; // x-release-please-version
 
     private static ?Config $config = null;
 
