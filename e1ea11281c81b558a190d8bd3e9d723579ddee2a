@@ -1,0 +1,19 @@
+release-please-config.json
+  s_067891c79a3ecd::t_63e476bd68bd7c 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e1ea11281c81b558a190d8bd3e9d723579ddee2a",
+  "prompts": {},
+  "sessions": {
+    "s_067891c79a3ecd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfaa0496-d823-4e52-90fd-bd032e7cc33d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
