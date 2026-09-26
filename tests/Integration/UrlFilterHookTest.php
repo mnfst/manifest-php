@@ -94,6 +94,17 @@ final class UrlFilterHookTest extends TestCase
         self::assertSame([$this->upstream->url . '/ping'], array_column($this->manifest->tracked(), 'url'));
     }
 
+    public function testAPatchNeverMovesTheRetryOntoADeniedRoute(): void
+    {
+        Manifest::start('k', $this->manifest->url, denylist: $this->host() . '/private');
+        $this->manifest->setResult(['status' => 'patched', 'healAttemptId' => 'a1',
+            'healedRequest' => ['url' => $this->upstream->url . '/private/orders', 'body' => ['limit' => 100]]]);
+        self::assertSame(400, $this->guzzle()->post($this->upstream->url . '/orders', ['json' => ['limit' => 500]])->getStatusCode());
+        // Replayed on the denied route, limit 100 would have answered 200.
+        self::assertCount(1, $this->manifest->heals());
+        self::assertSame('not_attempted', $this->manifest->outcomes()[0][1]['failure']['kind'] ?? null);
+    }
+
     public function testSymfonyResponsesAreNotWrapped(): void
     {
         $client = new HealingHttpClient(new NativeHttpClient());

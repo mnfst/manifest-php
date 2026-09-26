@@ -159,6 +159,7 @@ MNFST_DENYLIST=stripe.com/v1/charges,internal.example.com   # never these
 - A path matches whole segments: `/v1/charges` covers `/v1/charges/ch_123`, not `/v1/charges_export`. Paths are case-sensitive.
 - A scheme, port, query or fragment in an entry is ignored. `*` in a path is not supported yet: the entry is skipped with a warning, and an allowlist made only of skipped entries lets nothing through.
 - The denylist wins over the allowlist. With no allowlist, every call is eligible.
+- Paths are compared decoded, with `.` and `..` resolved, so `/%70rivate` and `/public/..%2Fprivate` both match `/private`. A patched retry is filtered too: a repair never moves a call onto an excluded path.
 
 Or in code: `\Mnfst\manifest(denylist: ['stripe.com/v1/charges']);`. An option overrides its environment variable.
 

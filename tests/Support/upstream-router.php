@@ -24,6 +24,16 @@ if (preg_match('~^/status/(\d{3})$~', (string) $path, $m) === 1) {
     return true;
 }
 
+// An endpoint that answers with far more than anyone should buffer: 16 MB.
+if ($path === '/v1/hello') {
+    for ($i = 0; $i < 16; $i++) {
+        echo str_repeat('x', 1_048_576);
+        flush();
+    }
+
+    return true;
+}
+
 if ($path === '/ping') {
     echo json_encode(['pong' => true]);
 
