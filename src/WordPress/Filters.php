@@ -66,7 +66,7 @@ final class Filters
                 $data = null;
             }
             $started ??= microtime(true);
-            if (!$healer->willHeal($status)) {
+            if (!$healer->willHeal($status, $target)) {
                 $healer->track($method, $target, $status, $started);
 
                 return $response;

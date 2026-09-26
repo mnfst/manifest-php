@@ -26,7 +26,7 @@ final class Pipeline
         float $started,
         callable $send,
     ): ResponseInterface {
-        if (!$healer->willHeal($response->getStatusCode())) {
+        if (!$healer->willHeal($response->getStatusCode(), (string) $request->getUri())) {
             $healer->track($request->getMethod(), (string) $request->getUri(), $response->getStatusCode(), $started);
 
             return $response;

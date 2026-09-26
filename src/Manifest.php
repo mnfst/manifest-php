@@ -20,9 +20,17 @@ final class Manifest
      * runner boots the app for every test, and turns any PHP warning into an
      * exception). A later call only refreshes the configuration the adapters
      * use; an empty key turns them off.
+     *
+     * @param list<string>|string|null $allowlist only these calls reach Manifest: domains or domain/paths (default MNFST_ALLOWLIST)
+     * @param list<string>|string|null $denylist these calls never reach Manifest, same entries (default MNFST_DENYLIST)
      */
-    public static function start(?string $apiKey = null, ?string $url = null, ?callable $onHeal = null): void
-    {
+    public static function start(
+        ?string $apiKey = null,
+        ?string $url = null,
+        ?callable $onHeal = null,
+        array|string|null $allowlist = null,
+        array|string|null $denylist = null,
+    ): void {
         // A test suite fakes its HTTP: Http::fake(), Guzzle's MockHandler,
         // Symfony's MockHttpClient. Those faked 4xx go through the real client
         // and would be reported to Manifest as failures that never happened,
@@ -33,11 +41,15 @@ final class Manifest
             return;
         }
 
-        $config = Config::resolve($apiKey, $url, $onHeal);
+        $config = Config::resolve($apiKey, $url, $onHeal, $allowlist, $denylist);
         if ($config->apiKey === null) {
             self::$healer = null;
 
             return;
+        }
+        if ($config->ignoredEntries !== []) {
+            // error_log, not a warning: a test runner turns warnings into exceptions (see above).
+            error_log('manifest: ignoring unreadable allowlist/denylist entries: ' . implode(', ', $config->ignoredEntries));
         }
         self::$config = $config;
         self::$healer = new Healer($config, new HealApi($config));

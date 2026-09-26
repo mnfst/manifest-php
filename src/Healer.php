@@ -25,17 +25,19 @@ final class Healer
     /**
      * Whether a response with this status goes to /v1/heal right now. When it
      * does not, the hook records the call with track() instead, so no call is
-     * lost from both ledgers.
+     * lost from both ledgers. An excluded URL is never healed, so the hook
+     * leaves its response untouched (and track() then drops it).
      */
-    public function willHeal(int $status): bool
+    public function willHeal(int $status, string $url): bool
     {
-        return Manifest::captureEnabled() && Gate::shouldCapture($status) && $this->api->healingEnabled();
+        return Manifest::captureEnabled() && !$this->excluded($url)
+            && Gate::shouldCapture($status) && $this->api->healingEnabled();
     }
 
     /** Record a call that is not being healed: metadata only, a local append (see Tracking). */
     public function track(string $method, string $url, int $status, float $started): void
     {
-        if (Manifest::captureEnabled()) {
+        if (Manifest::captureEnabled() && !$this->excluded($url)) {
             $this->tracking->record($method, $url, $status, $started);
         }
     }
@@ -47,7 +49,9 @@ final class Healer
      */
     public function attempt(Capture $capture, ?callable $send): ?Outcome
     {
-        if (!Manifest::captureEnabled() || !$this->api->healingEnabled() || !Gate::shouldCapture($capture->status)) {
+        if (!Manifest::captureEnabled() || $this->excluded($capture->url)
+            || !$this->api->healingEnabled() || !Gate::shouldCapture($capture->status)
+        ) {
             return null;
         }
 
@@ -115,6 +119,12 @@ final class Healer
                 (int) round((microtime(true) - $healStarted) * 1000),
             );
         }
+    }
+
+    /** A call the app keeps out of Manifest with its allowlist or denylist: never healed, never tracked. */
+    public function excluded(string $url): bool
+    {
+        return UrlFilter::excluded($this->config->allowlist, $this->config->denylist, $url);
     }
 
     /** A failed retry carries its raw body so the server can tell a recurrence from a new issue. */

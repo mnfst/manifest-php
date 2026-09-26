@@ -52,6 +52,9 @@ final class HealingHttpClient implements HttpClientInterface, ResetInterface
         } catch (\Throwable) {
             return $response;
         }
+        if ($healer->excluded($target)) {
+            return $response;   // kept out of Manifest by the allowlist or denylist: never wrapped, never tracked
+        }
 
         return new LazyHealingResponse($response, $this->client, $healer, $method, $target, $prepared);
     }
