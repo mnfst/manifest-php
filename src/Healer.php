@@ -66,12 +66,11 @@ final class Healer
                 : Bodies::parseRequestBody($capture->body, $contentType);
             [$responseBody, $truncated] = Wire::cappedResponseBody($capture->responseBody);
 
+            $sent = Masked::request($capture->method, $capture->url, $capture->headers, $body);
             $result = $this->api->heal(Wire::healPayload(
                 bin2hex(random_bytes(16)),
                 $capture->method,
-                $capture->url,
-                $capture->headers,
-                $body,
+                $sent,
                 $capture->status,
                 $responseBody,
                 $truncated,
@@ -82,7 +81,7 @@ final class Healer
             }
             $attemptId = is_string($result['healAttemptId'] ?? null) ? $result['healAttemptId'] : null;
 
-            $plan = $send === null ? null : Replay::plan($capture->method, $capture->url, $body, $replayable, $contentType, $result, $capture->headers);
+            $plan = $send === null ? null : Replay::plan($capture->method, $capture->url, $body, $replayable, $contentType, $result, $capture->headers, $sent);
             // A patched path is filtered like any other call: a retry never goes where the lists forbid.
             if ($plan !== null && $this->excluded($plan['url'])) {
                 $plan = null;
@@ -140,7 +139,8 @@ final class Healer
             return;
         }
         [$body, $truncated] = Wire::cappedResponseBody($outcome->body);
-        $this->api->reportResponse($attemptId, $outcome->status, $body, $truncated);
+        // The retry's error body travels too: masked like the first one.
+        $this->api->reportResponse($attemptId, $outcome->status, Masked::response($body), $truncated);
     }
 
     /** The onHeal callback, when configured. It must never break the app. */
@@ -153,7 +153,7 @@ final class Healer
         try {
             $operations = $result['operations'] ?? null;
             $onHeal(new HealEvent(
-                Wire::safeUrl($capture->url),
+                Masked::url($capture->url),
                 $capture->status,
                 is_string($healStatus) ? $healStatus : 'heal_unreachable',
                 $replayStatus,

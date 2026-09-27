@@ -179,7 +179,7 @@ final class HealApi
     {
         $masked = preg_replace_callback(
             '~https?://[^\s"\'()<>]+~i',
-            static fn (array $m): string => Wire::safeUrl($m[0]),
+            static fn (array $m): string => Masked::url($m[0]),
             $message,
         ) ?? $message;
 

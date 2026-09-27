@@ -185,18 +185,21 @@ recording one never slows the call. See CONTRACT.md, "Tracked requests", for
 long-running workers and mod_php.
 
 **Healable failures (full capture).** The failing request's URL, headers and body travel, plus the raw error
-response. Credential **values** never do:
+response. Credential **values** never do: [mnfst/http-redact](https://github.com/mnfst/http-redact#threat-model) replaces each one by `REDACTED`
+in place, in this process, before the request is sent:
 
-- query parameters with credential names are masked to `REDACTED`
-- credential-carrying headers are masked, their names kept
+- query, fragment and form fields named like a credential, at any depth
+- `Authorization` (scheme kept: `Bearer REDACTED`), cookies, credential headers
+- secret path segments (Slack, Discord, Telegram, Teams webhooks)
+- vendor keys, JWTs, PEM keys and random tokens wherever they appear, the
+  error response included
 - `user:password@host` is stripped from the URL
-- credential-named top-level body keys are withheld, and restored locally on
-  the retry
 
 Query order, repeated parameters, dotted names, and raw encoding are preserved.
-Masked query values are restored from the original request before a retry;
-credential parameters omitted from the healed URL are reattached. A mask with
-no local value to restore prevents the retry. Headers are updated without
+Before a retry, every value the heal left as it was sent (`REDACTED`, or a string
+masked partway) takes its original back, and a masked value the heal left out is
+put back; a value an operation changed stays changed. A mask with no local value
+to restore prevents the retry: the mask itself is never sent to the API. Headers are updated without
 regard to case, and body framing is recalculated by the original client.
 
 ## Development

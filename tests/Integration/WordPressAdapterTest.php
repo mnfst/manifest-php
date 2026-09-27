@@ -130,7 +130,7 @@ final class WordPressAdapterTest extends TestCase
         $sent = $this->manifest->heals()[0]['request'];
         self::assertSame('POST', $sent['method']);
         self::assertStringEndsWith('/orders', $sent['url']);
-        self::assertSame('REDACTED', $sent['headers']['authorization']);
+        self::assertSame('Bearer REDACTED', $sent['headers']['authorization']);
         self::assertSame(['limit' => 500], $sent['body']);
     }
 

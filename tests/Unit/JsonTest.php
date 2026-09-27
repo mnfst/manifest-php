@@ -4,7 +4,6 @@ namespace Mnfst\Tests\Unit;
 
 use Mnfst\Bodies;
 use Mnfst\Json;
-use Mnfst\Merge;
 use PHPUnit\Framework\TestCase;
 
 final class JsonTest extends TestCase
@@ -37,8 +36,7 @@ final class JsonTest extends TestCase
         foreach (['{"0":"a","1":{}}', '{"nested":{"0":10.0},"list":[]}'] as $raw) {
             self::assertSame($raw, Json::encode(Json::decode($raw)));
         }
-        self::assertSame('{}', Json::encode(\Mnfst\Wire::travelingBody(['api_key' => 'local'])));
-        self::assertSame('[]', Json::encode(Merge::healedBody(['a' => 1], ['a' => 1], Json::decode('[]'))));
+        self::assertSame('{"api_key":"REDACTED"}', Json::encode(\Mnfst\Masked::request('POST', 'https://a.test/', [], ['api_key' => 'local'])->body));
     }
 
     public function testObjectsWithKeysAreStillArrays(): void
@@ -48,12 +46,13 @@ final class JsonTest extends TestCase
         self::assertNull(Json::encode(['x' => INF]));
     }
 
-    public function testAHealedEmptyObjectStillRestoresWithheldCredentials(): void
+    public function testAHealedEmptyObjectStillRestoresMaskedCredentials(): void
     {
-        $merged = Merge::healedBody(['api_key' => 'sk_1', 'limit' => 5], ['limit' => 5], Json::decode('{}'));
-        self::assertSame(['api_key' => 'sk_1'], $merged);
+        $result = static fn (string $healed): array => ['status' => 'unverified', 'healedRequest' => ['body' => Json::decode($healed)]];
+        $plan = \Mnfst\Replay::plan('POST', 'https://a.test/', ['api_key' => 'sk_1', 'limit' => 5], true, \Mnfst\Bodies::JSON, $result('{}'));
+        self::assertSame('{"api_key":"sk_1"}', $plan['body']);
 
-        self::assertTrue(Json::isEmptyObject(Merge::healedBody(['limit' => 5], ['limit' => 5], Json::decode('{}'))));
-        self::assertSame('{}', Json::encode(Merge::healedBody(['limit' => 5], ['limit' => 5], Json::decode('{}'))));
+        $plan = \Mnfst\Replay::plan('POST', 'https://a.test/', ['limit' => 5], true, \Mnfst\Bodies::JSON, $result('{}'));
+        self::assertSame('{}', $plan['body']);
     }
 }

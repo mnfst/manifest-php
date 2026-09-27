@@ -113,7 +113,7 @@ final class SymfonyAdapterTest extends TestCase
         $sent = $this->manifest->heals()[0]['request'];
         self::assertSame('POST', $sent['method']);
         self::assertStringContainsString('existing=1&page=2', $sent['url'], 'query option folded into the URL');
-        self::assertSame('REDACTED', $sent['headers']['authorization'], 'auth_bearer masked');
+        self::assertSame('Bearer REDACTED', $sent['headers']['authorization'], 'auth_bearer masked, scheme kept');
         self::assertSame('d', $sent['headers']['x-default']);
         self::assertSame(['limit' => 500], $sent['body']);
     }
