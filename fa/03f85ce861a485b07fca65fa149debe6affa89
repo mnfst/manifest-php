@@ -1,0 +1,27 @@
+README.md
+  s_1433fd65404e08::t_1a3de051eb6d83 199
+docs/guide.md
+  s_1433fd65404e08::t_55879acee7699d 192-193
+src/Masked.php
+  s_1433fd65404e08::t_72b913ff46fcec 21-23,41-43
+tests/Unit/MaskedTest.php
+  s_1433fd65404e08::t_2c5a61f9f0a4d5 38-44
+tests/Unit/WireMaskingTest.php
+  s_1433fd65404e08::t_562dbaedc31bfe 89,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fa03f85ce861a485b07fca65fa149debe6affa89",
+  "prompts": {},
+  "sessions": {
+    "s_1433fd65404e08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1a8378c-067e-4760-88dd-c36de472f5b5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
