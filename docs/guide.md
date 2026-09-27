@@ -189,7 +189,8 @@ response. Credential **values** never do: [mnfst/http-redact](https://github.com
 in place, in this process, before the request is sent:
 
 - query, fragment and form fields named like a credential, at any depth
-- `Authorization` (scheme kept: `Bearer REDACTED`), cookies, credential headers
+- `Authorization` (scheme kept: `Bearer REDACTED`) and credential headers; cookies are
+  never sent at all
 - secret path segments (Slack, Discord, Telegram, Teams webhooks)
 - vendor keys, JWTs, PEM keys and random tokens wherever they appear, the
   error response included

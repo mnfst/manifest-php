@@ -18,6 +18,9 @@ final class Masked
 {
     public const MASK = 'REDACTED';
 
+    /** Never sent at all: cookies carry sessions, and fixing an API call does not need them. */
+    private const DROPPED_HEADERS = ['cookie', 'set-cookie'];
+
     /**
      * @param array<string, string> $headers lowercased, masked, capped
      * @param list<array{in: string, at: string}> $masks
@@ -35,6 +38,9 @@ final class Masked
     {
         $flat = [];
         foreach ($headers as $name => $value) {
+            if (in_array(strtolower((string) $name), self::DROPPED_HEADERS, true)) {
+                continue;
+            }
             $flat[(string) $name] = is_array($value) ? implode(', ', array_map('strval', $value)) : (string) $value;
         }
         $encoded = $body === null ? null : Json::encode($body);

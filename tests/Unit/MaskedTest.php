@@ -35,6 +35,13 @@ final class MaskedTest extends TestCase
         self::assertSame(Wire::HEADER_VALUE_CAP, strlen($sent->headers['x-long']));
     }
 
+    public function testCookiesNeverTravel(): void
+    {
+        $sent = Masked::request('GET', 'https://a.test/', ['Cookie' => 'session=abc; theme=dark', 'set-cookie' => 'x=1', 'Accept' => 'text/html'], null);
+        self::assertSame(['accept' => 'text/html'], $sent->headers);
+        self::assertSame([], $sent->masks);
+    }
+
     public function testANestedCredentialIsMaskedInPlaceAtItsPointer(): void
     {
         $sent = Masked::request('POST', 'https://a.test/', [], ['user' => ['name' => 'Ada', 'password' => 'hunter2'], 'limit' => 5]);

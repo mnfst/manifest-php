@@ -86,10 +86,9 @@ final class WireMaskingTest extends TestCase
         self::assertSame('application/json, text/html', Masked::request('GET', 'https://a.test/', ['Accept' => ['application/json', 'text/html']], null)->headers['accept']);
     }
 
-    public function testCookieValuesAreMaskedEvenWhenArrayValued(): void
+    public function testCookiesNeverTravelEvenWhenArrayValued(): void
     {
-        $out = Masked::request('GET', 'https://a.test/', ['Set-Cookie' => ['a=1', 'b=2']], null)->headers;
-        self::assertSame('a=REDACTED, b=REDACTED', $out['set-cookie'], 'names stay, every value goes');
+        self::assertArrayNotHasKey('set-cookie', Masked::request('GET', 'https://a.test/', ['Set-Cookie' => ['a=1', 'b=2']], null)->headers);
     }
 
     public function testHeadersCapLongValues(): void
