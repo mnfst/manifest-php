@@ -2,6 +2,7 @@
 
 namespace Mnfst\Tests\Unit;
 
+use Mnfst\Masked;
 use Mnfst\Wire;
 use PHPUnit\Framework\TestCase;
 
@@ -57,86 +58,67 @@ final class WireMaskingTest extends TestCase
         );
     }
 
-    public function testSafeUrlKeepsThePortAndPathWhenThereIsNoQuery(): void
+    public function testTheUrlKeepsThePortAndPathWhenThereIsNoQuery(): void
     {
-        self::assertSame('https://api.test:8443/a/b', Wire::safeUrl('https://api.test:8443/a/b'));
-        self::assertSame('https://api.test/path', Wire::safeUrl('https://api.test/path'));
+        self::assertSame('https://api.test:8443/a/b', Masked::url('https://api.test:8443/a/b'));
+        self::assertSame('https://api.test/path', Masked::url('https://api.test/path'));
     }
 
-    public function testSafeUrlReturnsAPlaceholderWhenTheUrlCannotBeParsed(): void
+    public function testAUrlParseUrlRejectsStillTravelsMasked(): void
     {
-        // A non-numeric port makes parse_url() fail outright.
-        self::assertSame('REDACTED_URL', Wire::safeUrl('https://host:notaport/x'));
+        // parse_url() fails on a non-numeric port; the masker does not need it to.
+        self::assertSame('https://host:notaport/x?token=REDACTED', Masked::url('https://host:notaport/x?token=abc'));
     }
 
-    public function testSafeUrlChecksTheDecodedNameButEmitsItVerbatim(): void
+    public function testTheUrlChecksTheDecodedNameButEmitsItVerbatim(): void
     {
         // api%5Fkey decodes to api_key, so the value is masked, yet the name travels as written.
+        self::assertSame('https://api.test/x?api%5Fkey=REDACTED&page=1', Masked::url('https://api.test/x?api%5Fkey=secret&page=1'));
+    }
+
+    public function testTheUrlMasksSuffixCredentialNamesInTheQuery(): void
+    {
+        self::assertSame('https://api.test/x?guest_session_id=REDACTED&page=1', Masked::url('https://api.test/x?guest_session_id=gs%2F9&page=1'));
+    }
+
+    public function testHeadersJoinArrayValuesWithCommaSpace(): void
+    {
+        self::assertSame('application/json, text/html', Masked::request('GET', 'https://a.test/', ['Accept' => ['application/json', 'text/html']], null)->headers['accept']);
+    }
+
+    public function testCookiesNeverTravelEvenWhenArrayValued(): void
+    {
+        self::assertArrayNotHasKey('set-cookie', Masked::request('GET', 'https://a.test/', ['Set-Cookie' => ['a=1', 'b=2']], null)->headers);
+    }
+
+    public function testHeadersCapLongValues(): void
+    {
+        self::assertSame(Wire::HEADER_VALUE_CAP, strlen(Masked::request('GET', 'https://a.test/', ['X-Long' => str_repeat('a', 2000)], null)->headers['x-long']));
+    }
+
+    public function testNestedCredentialsAreMaskedToo(): void
+    {
         self::assertSame(
-            'https://api.test/x?api%5Fkey=REDACTED&page=1',
-            Wire::safeUrl('https://api.test/x?api%5Fkey=secret&page=1'),
+            ['user' => ['api_key' => 'REDACTED'], 'api_key' => 'REDACTED', 'limit' => 5],
+            Masked::request('POST', 'https://a.test/', [], ['user' => ['api_key' => 'nested'], 'api_key' => 'top', 'limit' => 5])->body,
         );
     }
 
-    public function testSafeUrlMasksSuffixCredentialNamesInTheQuery(): void
+    public function testSuffixNamedBodyCredentialsAreMasked(): void
     {
         self::assertSame(
-            'https://api.test/x?guest_session_id=REDACTED&page=1',
-            Wire::safeUrl('https://api.test/x?guest_session_id=gs%2F9&page=1'),
-        );
-    }
-
-    public function testSafeHeadersJoinsArrayValuesWithCommaSpace(): void
-    {
-        $out = Wire::safeHeaders(['Accept' => ['application/json', 'text/html']]);
-        self::assertSame('application/json, text/html', $out['accept']);
-    }
-
-    public function testSafeHeadersMasksSecretHeadersEvenWhenArrayValued(): void
-    {
-        $out = Wire::safeHeaders(['Set-Cookie' => ['a=1', 'b=2']]);
-        self::assertSame('REDACTED', $out['set-cookie'], 'cookie is a credential root');
-    }
-
-    public function testSafeHeadersCapsLongValues(): void
-    {
-        $out = Wire::safeHeaders(['X-Long' => str_repeat('a', 2000)]);
-        self::assertSame(Wire::HEADER_VALUE_CAP, strlen($out['x-long']));
-    }
-
-    public function testTravelingBodyOnlyWithholdsTopLevelCredentials(): void
-    {
-        self::assertSame(
-            ['user' => ['api_key' => 'nested-stays'], 'limit' => 5],
-            Wire::travelingBody(['user' => ['api_key' => 'nested-stays'], 'api_key' => 'top-withheld', 'limit' => 5]),
-        );
-    }
-
-    public function testTravelingBodyWithholdsSuffixNamedCredentials(): void
-    {
-        self::assertSame(
-            ['limit' => 5],
-            Wire::travelingBody(['guest_session_id' => 'g', 'stripe_api_key' => 'k', 'limit' => 5]),
+            ['guest_session_id' => 'REDACTED', 'stripe_api_key' => 'REDACTED', 'limit' => 5],
+            Masked::request('POST', 'https://a.test/', [], ['guest_session_id' => 'g', 'stripe_api_key' => 'k', 'limit' => 5])->body,
         );
     }
 
     public function testHealPayloadMasksHeadersAndPropagatesTruncation(): void
     {
-        $payload = Wire::healPayload(
-            't2',
-            'get',
-            'https://api.test/x',
-            ['Authorization' => 'Bearer secret', 'Accept' => 'application/json'],
-            null,
-            413,
-            'raw error text',
-            true,
-            42,
-        );
-
+        $sent = Masked::request('get', 'https://api.test/x', ['Authorization' => 'Bearer secret', 'Accept' => 'application/json'], null);
+        $payload = Wire::healPayload('t2', 'get', $sent, 413, 'raw error text', true, 42);
         // headers travel as a JSON object, so an empty set is {} and not []
         $headers = (array) $payload['request']['headers'];
-        self::assertSame('REDACTED', $headers['authorization']);
+        self::assertSame('Bearer REDACTED', $headers['authorization']);
         self::assertSame('application/json', $headers['accept']);
         self::assertSame('raw error text', $payload['response']['body'], 'a string response body travels as-is');
         self::assertTrue($payload['response']['truncated']);

@@ -191,10 +191,12 @@ under the caller's control and are not healed. See [the coverage details](docs/g
 
 ## What leaves the machine
 
+Masking is done in this process, before anything is sent, by [mnfst/http-redact](https://github.com/mnfst/http-redact#threat-model): its README lists exactly what is masked and what is not.
+
 | Call | Sent to Manifest | Never sent |
 | --- | --- | --- |
-| A call Manifest does not heal, whatever its status | method, scheme, host, port, path, status, timing | query string, headers, bodies |
-| A failure Manifest can heal (a 4xx other than 401, 402, 403 and 429) | URL, headers, request body and error response. Credential values in the query string and headers are replaced by `REDACTED`; credential fields at the top level of the body are left out | the masked values |
+| A call Manifest does not heal, whatever its status | method, scheme, host, port, path (a secret in it, like a webhook token, replaced by `REDACTED`), status, timing | query string, headers, bodies |
+| A failure Manifest can heal (a 4xx other than 401, 402, 403 and 429) | URL, headers (except cookies), request body and error response, with every credential value replaced by `REDACTED` wherever it sits: query, path, headers, nested body fields, vendor keys and tokens in free text, the error response | the masked values, cookies, and `user:password@` |
 | The retry | nothing: it goes to the original API, through your own client, with the real values | — |
 | A call excluded by [`MNFST_ALLOWLIST` / `MNFST_DENYLIST`](#choosing-which-calls-reach-manifest) | nothing | everything |
 

@@ -3,6 +3,7 @@
 namespace Mnfst\Tests\Unit;
 
 use Mnfst\Bodies;
+use Mnfst\Masked;
 use Mnfst\Wire;
 use PHPUnit\Framework\TestCase;
 
@@ -10,7 +11,7 @@ final class WireTest extends TestCase
 {
     public function testMasksSecretQueryValuesButKeepsNames(): void
     {
-        $out = Wire::safeUrl('https://api.test/v1/x?api_key=sk_live_123&page=2');
+        $out = Masked::url('https://api.test/v1/x?api_key=sk_live_123&page=2');
         self::assertStringContainsString('api_key=REDACTED', $out);
         self::assertStringContainsString('page=2', $out);
         self::assertStringNotContainsString('sk_live_123', $out);
@@ -21,17 +22,17 @@ final class WireTest extends TestCase
         $url = 'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=sk_1';
         self::assertSame(
             'https://api.test/x?page=1&page=2&vote_average.gte=7&q=&flag&name=a+b%2Cc&api_key=REDACTED',
-            Wire::safeUrl($url),
+            Masked::url($url),
         );
     }
 
     public function testMasksNamesThatEndWithACredentialWord(): void
     {
         foreach (['guest_session_id', 'stripe_api_key', 'userPassword', 'X-Client-Secret'] as $name) {
-            self::assertTrue(Wire::isSecretField($name), "$name must be secret");
+            self::assertStringContainsString("$name=REDACTED", Masked::url("https://a.test/?$name=v"), "$name must be secret");
         }
         foreach (['page_token', 'session_count', 'keyword', 'limit'] as $name) {
-            self::assertFalse(Wire::isSecretField($name), "$name must travel");
+            self::assertStringContainsString("$name=v", Masked::url("https://a.test/?$name=v"), "$name must travel");
         }
     }
 
@@ -45,32 +46,33 @@ final class WireTest extends TestCase
 
     public function testStripsUserInfoFromTheUrl(): void
     {
-        self::assertSame('https://api.test/x', Wire::safeUrl('https://user:pw@api.test/x'));
+        self::assertSame('https://api.test/x', Masked::url('https://user:pw@api.test/x'));
+        self::assertSame('https://api.test/x', Masked::request('GET', 'https://user:pw@api.test/x', [], null)->url);
     }
 
     public function testNormalisesSecretNames(): void
     {
         foreach (['X-Api-Key', 'apiKey', 'api_key', 'API-KEY'] as $name) {
-            self::assertTrue(Wire::isSecretHeader($name), "$name must be secret");
+            self::assertSame('REDACTED', Masked::request('GET', 'https://a.test/', [$name => 'v'], null)->headers[strtolower($name)], "$name must be secret");
         }
     }
 
     public function testMasksSecretHeadersAndLowercasesNames(): void
     {
-        $out = Wire::safeHeaders(['Authorization' => 'Bearer abc', 'Accept' => 'application/json']);
-        self::assertSame('REDACTED', $out['authorization']);
+        $out = Masked::request('GET', 'https://a.test/', ['Authorization' => 'Bearer abc', 'Accept' => 'application/json'], null)->headers;
+        self::assertSame('Bearer REDACTED', $out['authorization']);
         self::assertSame('application/json', $out['accept']);
     }
 
-    public function testWithholdsSecretTopLevelBodyKeys(): void
+    public function testMasksSecretBodyValuesInPlace(): void
     {
-        self::assertSame(['limit' => 500], Wire::travelingBody(['limit' => 500, 'api_key' => 'sk_live_1']));
+        self::assertSame(['limit' => 500, 'api_key' => 'REDACTED'], Masked::request('POST', 'https://a.test/', [], ['limit' => 500, 'api_key' => 'sk_live_1'])->body);
     }
 
     public function testNonObjectBodyTravelsUnchanged(): void
     {
-        self::assertSame([1, 2, 3], Wire::travelingBody([1, 2, 3]));
-        self::assertSame('plain', Wire::travelingBody('plain'));
+        self::assertSame([1, 2, 3], Masked::request('POST', 'https://a.test/', [], [1, 2, 3])->body);
+        self::assertSame('plain', Masked::request('POST', 'https://a.test/', [], 'plain')->body);
     }
 
     public function testCapsAndParsesTheResponseBody(): void
@@ -102,35 +104,26 @@ final class WireTest extends TestCase
 
     public function testEmptyHeadersTravelAsAJsonObject(): void
     {
-        $payload = Wire::healPayload('t', 'GET', 'https://a.test/x', [], null, 404, null, false, 1);
+        $payload = Wire::healPayload('t', 'GET', Masked::request('GET', 'https://a.test/x', [], null), 404, null, false, 1);
         self::assertStringContainsString('"headers":{}', json_encode($payload));
     }
 
     public function testAnEmptyObjectBodyTravelsAsAJsonObject(): void
     {
         [$body] = Bodies::parseRequestBody('{}', 'application/json');
-        $payload = Wire::healPayload('t', 'POST', 'https://a.test/x', [], $body, 400, null, false, 1);
+        $payload = Wire::healPayload('t', 'POST', Masked::request('POST', 'https://a.test/x', [], $body), 400, null, false, 1);
         self::assertStringContainsString('"body":{}', json_encode($payload));
     }
 
     public function testHealPayloadShape(): void
     {
-        $payload = Wire::healPayload(
-            't1',
-            'post',
-            'https://api.test/orders?token=abc',
-            ['Content-Type' => 'application/json'],
-            ['limit' => 500, 'token' => 'abc'],
-            400,
-            ['error' => 'too big'],
-            false,
-            25,
-        );
+        $sent = Masked::request('post', 'https://api.test/orders?token=abc', ['Content-Type' => 'application/json'], ['limit' => 500, 'token' => 'abc']);
+        $payload = Wire::healPayload('t1', 'post', $sent, 400, ['error' => 'too big'], false, 25);
 
         self::assertSame('t1', $payload['traceId']);
         self::assertSame('POST', $payload['request']['method']);
         self::assertStringContainsString('token=REDACTED', $payload['request']['url']);
-        self::assertSame(['limit' => 500], $payload['request']['body']);
+        self::assertSame(['limit' => 500, 'token' => 'REDACTED'], $payload['request']['body']);
         self::assertSame(400, $payload['response']['statusCode']);
         self::assertSame(['error' => 'too big'], $payload['response']['body']);
         self::assertFalse($payload['response']['truncated']);

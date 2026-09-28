@@ -1,33 +1,65 @@
 {
-  "name": "mnfst/manifest-php",
-  "description": "Turn 4xx API errors into 2xx in real time.",
-  "type": "library",
-  "license": "MIT",
-  "require": {
-    "ext-curl": "*",
-    "php": "^8.2",
-    "psr/http-message": "^1.1 || ^2.0"
-  },
-  "require-dev": {
-    "cakephp/http": "^5.1",
-    "guzzlehttp/guzzle": "^7.5 || ^8.0",
-    "illuminate/container": "^11.0 || ^12.0 || ^13.0",
-    "illuminate/http": "^11.0 || ^12.0 || ^13.0",
-    "phpunit/phpunit": "^11.0",
-    "rmccue/requests": "^2.0",
-    "symfony/config": "^6.4 || ^7.0 || ^8.0",
-    "symfony/dependency-injection": "^6.4 || ^7.0 || ^8.0",
-    "symfony/http-client": "^6.4 || ^7.0 || ^8.0"
-  },
-  "autoload": {
-    "psr-4": { "Mnfst\\": "src/" },
-    "files": ["src/functions.php", "src/adapters.php"]
-  },
-  "autoload-dev": { "psr-4": { "Mnfst\\Tests\\": "tests/" } },
-  "bin": ["bin/manifest"],
-  "scripts": { "test": "phpunit" },
-  "config": { "sort-packages": true },
-  "extra": {
-    "laravel": { "providers": ["Mnfst\\Laravel\\ManifestServiceProvider"] }
-  }
+    "name": "mnfst/manifest-php",
+    "description": "Turn 4xx API errors into 2xx in real time.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "ext-curl": "*",
+        "php": "^8.2",
+        "psr/http-message": "^1.1 || ^2.0",
+        "mnfst/http-redact": "^1.0"
+    },
+    "require-dev": {
+        "cakephp/http": "^5.1",
+        "guzzlehttp/guzzle": "^7.5 || ^8.0",
+        "illuminate/container": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+        "phpunit/phpunit": "^11.0",
+        "rmccue/requests": "^2.0",
+        "symfony/config": "^6.4 || ^7.0 || ^8.0",
+        "symfony/dependency-injection": "^6.4 || ^7.0 || ^8.0",
+        "symfony/http-client": "^6.4 || ^7.0 || ^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mnfst\\": "src/"
+        },
+        "files": [
+            "src/functions.php",
+            "src/adapters.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mnfst\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/manifest"
+    ],
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Mnfst\\Laravel\\ManifestServiceProvider"
+            ]
+        }
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../http-redact/packages/php",
+            "options": {
+                "symlink": false,
+                "versions": {
+                    "mnfst/http-redact": "1.0.0"
+                }
+            }
+        }
+    ]
 }

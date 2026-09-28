@@ -8,85 +8,14 @@ namespace Mnfst;
  *
  * Everything about the failing request travels — URL with query, headers,
  * body — so the server has the whole context. Credential VALUES never do:
- * query and header values are masked to REDACTED with their names kept, and
- * credential-named top-level body keys are withheld and restored on retry by
- * Merge. safeUrl/safeHeaders output is for the wire only; never feed it back
- * into a live request.
+ * Masked replaces them in place by REDACTED (mnfst/http-redact), and Replay
+ * restores them before a retry. Masked output is for the wire only; never feed
+ * it back into a live request.
  */
 final class Wire
 {
     public const RESPONSE_BODY_CAP = 65536;
     public const HEADER_VALUE_CAP = 1024;
-
-    /** The client-side MINIMUM of credential-named fields. The server may know more. */
-    private const SECRET_PARAMS = [
-        'api_key', 'apikey', 'api_token', 'key', 'token', 'access_token', 'refresh_token',
-        'auth', 'authorization', 'signature', 'sig', 'secret', 'client_secret',
-        'password', 'session', 'session_id',
-        'bearer', 'jwt', 'id_token', 'auth_token', 'pwd', 'passwd', 'private_key',
-    ];
-
-    /**
-     * Header names are matched on ROOTS: any header whose normalised name
-     * contains one carries a credential. Over-masking a harmless header costs
-     * nothing — its presence still travels.
-     */
-    private const SECRET_HEADER_ROOTS = [
-        'auth', 'key', 'token', 'secret', 'session', 'password',
-        'passwd', 'cookie', 'signature', 'credential', 'bearer', 'jwt',
-    ];
-
-    /**
-     * A name that ENDS with one of these carries a credential too: guest_session_id,
-     * stripe_api_key, user_password. Suffixes only, so page_token or csrf stay visible
-     * to the server that has to repair them.
-     */
-    private const SECRET_SUFFIXES = [
-        'api_key', 'session_id', 'access_token', 'refresh_token', 'auth_token', 'id_token',
-        'client_secret', 'private_key', 'secret', 'password', 'passwd',
-    ];
-
-    /** X-Api-Key, apiKey and api_key are all the same secret. */
-    private static function normalize(string $name): string
-    {
-        $normalized = preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $name) ?? $name;
-        $normalized = strtolower(str_replace('-', '_', $normalized));
-
-        return str_starts_with($normalized, 'x_') ? substr($normalized, 2) : $normalized;
-    }
-
-    public static function isSecretField(mixed $name): bool
-    {
-        if (!is_string($name)) {
-            return false;
-        }
-        $normalized = self::normalize($name);
-        if (in_array($normalized, self::SECRET_PARAMS, true)) {
-            return true;
-        }
-        foreach (self::SECRET_SUFFIXES as $suffix) {
-            if (str_ends_with($normalized, '_' . $suffix)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static function isSecretHeader(string $name): bool
-    {
-        $normalized = self::normalize($name);
-        if (in_array($normalized, self::SECRET_PARAMS, true)) {
-            return true;
-        }
-        foreach (self::SECRET_HEADER_ROOTS as $root) {
-            if (str_contains($normalized, $root)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     /**
      * The URL a tracked call is reported under: scheme, host, port and path
@@ -102,41 +31,8 @@ final class Wire
         }
         $port = isset($parts['port']) ? ':' . $parts['port'] : '';
 
-        return $scheme . '://' . $parts['host'] . $port . ($parts['path'] ?? '');
-    }
-
-    /**
-     * The URL as it went on the wire, minus credential values. The query is
-     * handled pair by pair, never through parse_str(): that would collapse a
-     * duplicated key (`page=1&page=2`, the very thing some APIs reject) and
-     * rewrite `a.b` as `a_b`, and the server can only repair what it sees.
-     */
-    public static function safeUrl(string $url): string
-    {
-        $parts = parse_url($url);
-        if ($parts === false) {
-            return 'REDACTED_URL';
-        }
-
-        $query = '';
-        if (isset($parts['query']) && $parts['query'] !== '') {
-            $masked = [];
-            foreach (self::queryPairs($parts['query']) as [$name, $value]) {
-                if ($value === null) {
-                    $masked[] = $name;
-                    continue;
-                }
-                $masked[] = $name . '=' . (self::isSecretField(urldecode($name)) ? 'REDACTED' : $value);
-            }
-            $query = '?' . implode('&', $masked);
-        }
-
-        // user:password@host is a credential too — keep host[:port] only.
-        $host = $parts['host'] ?? '';
-        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-        $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
-
-        return $scheme . $host . $port . ($parts['path'] ?? '') . $query;
+        // A secret in the path (a webhook URL, /bot<token>/) is masked here, before the spool file.
+        return Masked::url($scheme . '://' . $parts['host'] . $port . ($parts['path'] ?? ''));
     }
 
     /**
@@ -157,44 +53,6 @@ final class Wire
         }
 
         return $pairs;
-    }
-
-    /** Every header travels, lowercased; credential values are masked. */
-    public static function safeHeaders(iterable $headers): array
-    {
-        $out = [];
-        try {
-            foreach ($headers as $name => $value) {
-                $key = strtolower((string) $name);
-                $text = is_array($value) ? implode(', ', $value) : (string) $value;
-                $out[$key] = self::isSecretHeader($key)
-                    ? 'REDACTED'
-                    : substr($text, 0, self::HEADER_VALUE_CAP);
-            }
-        } catch (\Throwable) {
-            // fail open: a header we cannot read is one we do not send
-        }
-
-        return $out;
-    }
-
-    /**
-     * What of the body goes on the wire: an object minus its credential-named
-     * top-level keys (Merge restores them on retry); any other JSON as-is.
-     */
-    public static function travelingBody(mixed $body): mixed
-    {
-        if (!$body instanceof \stdClass && (!is_array($body) || array_is_list($body))) {
-            return $body;
-        }
-
-        $filtered = array_filter(
-            (array) $body,
-            static fn (string|int $key): bool => !self::isSecretField($key),
-            ARRAY_FILTER_USE_KEY,
-        );
-
-        return array_is_list($filtered) ? (object) $filtered : $filtered;
     }
 
     /** @return array{0: mixed, 1: bool} the body and whether it was truncated */
@@ -234,12 +92,11 @@ final class Wire
         return $expected > $continuation ? substr($cut, 0, $last) : $cut;
     }
 
+    /** The /v1/heal payload for a request Masked::request() prepared and a response it masked. */
     public static function healPayload(
         string $traceId,
         string $method,
-        string $url,
-        iterable $headers,
-        mixed $body,
+        Masked $sent,
         int $statusCode,
         mixed $responseBody,
         bool $truncated,
@@ -249,14 +106,14 @@ final class Wire
             'traceId' => $traceId,
             'request' => [
                 'method' => strtoupper($method),
-                'url' => self::safeUrl($url),
+                'url' => $sent->url,
                 // an object even when empty: [] would encode as a JSON list
-                'headers' => (object) self::safeHeaders($headers),
-                'body' => self::travelingBody($body),
+                'headers' => (object) $sent->headers,
+                'body' => $sent->body,
             ],
             'response' => [
                 'statusCode' => $statusCode,
-                'body' => $responseBody,
+                'body' => Masked::response($responseBody),
                 'truncated' => $truncated,
             ],
             'responseTimeMs' => $responseTimeMs,

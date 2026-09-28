@@ -4,7 +4,8 @@
 /**
  * Print the bytes this SDK puts on the wire, one JSON document per line, so
  * the server can pin its request schemas against them. Needs no extension:
- * only the pure payload builders run. Run from the package root:
+ * only the pure payload builders run. Run from the package root, after
+ * `composer install`:
  *
  *   php scripts/wire-fixtures.php > fixtures.jsonl
  *
@@ -12,34 +13,34 @@
  * each line with the zod schema named by `schema`.
  */
 
-spl_autoload_register(static function (string $class): void {
-    $file = __DIR__ . '/../src/' . str_replace('\\', '/', substr($class, strlen('Mnfst\\'))) . '.php';
-    if (str_starts_with($class, 'Mnfst\\') && is_file($file)) {
-        require $file;
-    }
-});
+require __DIR__ . '/../vendor/autoload.php';   // the payload builders need mnfst/http-redact
 
 use Mnfst\Bodies;
 use Mnfst\HealApi;
+use Mnfst\Masked;
 use Mnfst\Tracking;
 use Mnfst\Wire;
 
+// The capture exactly as Healer builds it: Masked prepares the request, healPayload wraps it.
+$heal = static fn (string $trace, string $method, string $url, array $headers, mixed $body, int $status, mixed $response, bool $truncated, int $ms): array
+    => Wire::healPayload($trace, $method, Masked::request($method, $url, $headers, $body), $status, $response, $truncated, $ms);
+
 $fixtures = [
     // a raw-curl capture: no headers are known, and the body is a JSON object
-    ['schema' => 'capture', 'name' => 'curl capture without headers', 'body' => Wire::healPayload(
+    ['schema' => 'capture', 'name' => 'curl capture without headers', 'body' => $heal(
         'trace-1', 'post', 'https://api.example.com/orders?api_key=sk_live_1&page=2', [],
         Bodies::parseRequestBody('{"limit":500,"api_key":"sk_live_1"}', Bodies::JSON)[0],
         400, ['error' => 'limit must be at most 100'], false, 25,
     )],
-    ['schema' => 'capture', 'name' => 'empty object body', 'body' => Wire::healPayload(
+    ['schema' => 'capture', 'name' => 'empty object body', 'body' => $heal(
         'trace-2', 'POST', 'https://api.example.com/orders', ['Content-Type' => 'application/json', 'Authorization' => 'Bearer t'],
         Bodies::parseRequestBody('{}', Bodies::JSON)[0], 422, 'not json', true, 0,
     )],
-    ['schema' => 'capture', 'name' => 'form body with repeated keys', 'body' => Wire::healPayload(
+    ['schema' => 'capture', 'name' => 'form body with repeated keys', 'body' => $heal(
         'trace-3', 'POST', 'https://api.example.com/orders', ['content-type' => [Bodies::FORM]],
         Bodies::parseRequestBody('tag=a&tag=b&first.name=x', Bodies::FORM)[0], 400, null, false, 3,
     )],
-    ['schema' => 'capture', 'name' => 'bodyless GET', 'body' => Wire::healPayload(
+    ['schema' => 'capture', 'name' => 'bodyless GET', 'body' => $heal(
         'trace-4', 'GET', 'https://api.example.com/orders?limit=500', ['Accept' => 'application/json'],
         Bodies::parseRequestBody(null, '')[0], 404, ['error' => 'no such order'], false, 12,
     )],
