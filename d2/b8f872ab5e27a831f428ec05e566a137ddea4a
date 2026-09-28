@@ -1,0 +1,19 @@
+tests/Unit/MaskedTest.php
+  s_1433fd65404e08::t_75bc439b545d4f 76-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d2b8f872ab5e27a831f428ec05e566a137ddea4a",
+  "prompts": {},
+  "sessions": {
+    "s_1433fd65404e08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1a8378c-067e-4760-88dd-c36de472f5b5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Guillaume Gay <guillaume.gay@protonmail.com>"
+    }
+  }
+}
