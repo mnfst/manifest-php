@@ -73,6 +73,12 @@ final class MaskedTest extends TestCase
         self::assertSame(['error' => ['message' => 'Bad key: REDACTED.']], Masked::response(['error' => ['message' => 'Bad key: ' . self::key() . '.']]));
     }
 
+    public function testAnErrorResponseKeepsItsFieldNames(): void
+    {
+        $error = ['error' => ['code' => 'invalid_value', 'type' => 'validation_error', 'param' => 'limit', 'message' => 'Bad key: ' . self::key() . '.']];
+        self::assertSame(['error' => ['code' => 'invalid_value', 'type' => 'validation_error', 'param' => 'limit', 'message' => 'Bad key: REDACTED.']], Masked::response($error));
+    }
+
     public function testAUrlForMessagesIsMaskedWithoutUserinfo(): void
     {
         self::assertSame('https://a.test/x?token=REDACTED', Masked::url('https://u:p@a.test/x?token=abc'));
